@@ -1,0 +1,11 @@
+package vn.techflow.manager.task;
+import org.springframework.beans.factory.annotation.Value; import org.springframework.scheduling.annotation.Async; import org.springframework.stereotype.Service; import java.io.*; import java.nio.charset.StandardCharsets; import java.nio.file.*; import java.util.*; import java.util.concurrent.CompletableFuture;
+@Service public class TaskService {
+ private final TaskRepository repo; private final Path project; private final String python;
+ public TaskService(TaskRepository r,@Value("${techflow.project-dir:..}")String p,@Value("${techflow.python-command:python}")String py){repo=r;project=Path.of(p).toAbsolutePath().normalize();python=py;}
+ public List<WorkTask> all(){return repo.findAllByOrderByUpdatedAtDesc();} public WorkTask get(Long id){return repo.findById(id).orElseThrow(()->new TaskNotFoundException(id));}
+ public WorkTask save(WorkTask t,TaskRequest r){t.setTitle(r.title().trim());t.setDescription(r.description()==null?"":r.description().trim());t.setTopic(r.topic()==null?"":r.topic().trim());t.setStatus(r.status()==null?TaskStatus.TODO:r.status());t.setPriority(r.priority()==null?Priority.MEDIUM:r.priority());t.setDueDate(r.dueDate());return repo.save(t);}
+ public void delete(Long id){repo.delete(get(id));}
+ @Async public CompletableFuture<Void> generate(Long id){WorkTask t=get(id);if(t.getTopic().isBlank())throw new IllegalArgumentException("Task cần có chủ đề video");t.setStatus(TaskStatus.GENERATING);t.setErrorMessage(null);repo.save(t);try{Process p=new ProcessBuilder(python,"main.py","--topic",t.getTopic()).directory(project.toFile()).redirectErrorStream(true).start();String output=new String(p.getInputStream().readAllBytes(),StandardCharsets.UTF_8);int code=p.waitFor();if(code!=0)throw new IOException("Pipeline lỗi "+code+": "+tail(output,1800));int i=output.lastIndexOf("VIDEO_READY=");t.setOutputPath(i<0?null:output.substring(i+12).trim());t.setStatus(TaskStatus.DRAFT_REQUIRES_REVIEW);}catch(Exception e){if(e instanceof InterruptedException)Thread.currentThread().interrupt();t.setStatus(TaskStatus.FAILED);t.setErrorMessage(tail(e.getMessage(),3500));}repo.save(t);return CompletableFuture.completedFuture(null);}
+ private static String tail(String s,int n){if(s==null)return "Lỗi không xác định";return s.length()<=n?s:s.substring(s.length()-n);}
+}
