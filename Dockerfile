@@ -22,4 +22,4 @@ COPY --from=backend /workspace/web-manager/target/web-manager-1.1.0.jar ./app.ja
 COPY video_worker.py ./video_worker.py
 USER techflow
 EXPOSE 8080
-CMD ["sh", "-c", "if [ -n \"$DATABASE_URL_RAW\" ]; then db_target=\"${DATABASE_URL_RAW#postgresql://}\"; export DATABASE_URL=\"jdbc:postgresql://${db_target#*@}\"; fi; exec java -jar /app/app.jar"]
+CMD ["sh", "-c", "if [ -n \"$DATABASE_URL_RAW\" ]; then db_target=\"${DATABASE_URL_RAW#postgresql://}\"; export DATABASE_URL=\"jdbc:postgresql://${db_target#*@}\"; fi; exec java -Xms64m -Xmx192m -Xss256k -XX:MaxMetaspaceSize=112m -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -jar /app/app.jar"]
