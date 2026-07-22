@@ -8,7 +8,6 @@ RUN npm run build
 FROM maven:3.9.11-eclipse-temurin-21 AS backend
 WORKDIR /workspace/web-manager
 COPY web-manager/pom.xml ./
-RUN mvn dependency:go-offline -B
 COPY web-manager/src ./src
 COPY --from=frontend /workspace/web-manager/src/main/resources/static ./src/main/resources/static
 RUN mvn package -DskipTests -B
