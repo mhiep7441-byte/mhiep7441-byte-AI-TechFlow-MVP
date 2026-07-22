@@ -117,13 +117,21 @@ public class TaskService {
             String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             int exitCode = process.waitFor();
             if (exitCode != 0) throw new IOException("Pipeline lỗi " + exitCode + ": " + tail(output, 2500));
-            int marker = output.lastIndexOf("VIDEO_READY=");
-            if (marker < 0) throw new IOException("Worker không trả về URL video");
-            String videoUrl = output.substring(marker + 12).lines().findFirst().orElse("").trim();
-            if (videoUrl.isBlank()) throw new IOException("Worker trả về URL video trống");
-            task.setOutputPath(videoUrl);
-            if (task.getCaption().isBlank()) task.setCaption(task.getTitle());
-            if (task.getHashtags().isBlank()) task.setHashtags("#AI #congnghe #laptrinh #TechFlowVN");
+            WorkerMetadata metadata = WorkerMetadata.parse(output);
+            task.setOutputPath(metadata.videoUrl());
+            task.setResearchJson(metadata.researchJson());
+            task.setStoryboardJson(metadata.storyboardJson());
+            task.setSourceUrls(metadata.sourceUrls());
+            task.setFactCheckStatus(metadata.factCheckStatus());
+            task.setQualityScore(metadata.qualityScore());
+            if (task.getCaption().isBlank()) {
+                task.setCaption(metadata.caption().isBlank() ? task.getTitle() : metadata.caption());
+            }
+            if (task.getHashtags().isBlank()) {
+                task.setHashtags(metadata.hashtags().isBlank()
+                        ? "#AI #congnghe #laptrinh #TechFlowVN"
+                        : metadata.hashtags());
+            }
             task.setStatus(TaskStatus.DRAFT_REQUIRES_REVIEW);
         } catch (Exception exception) {
             if (exception instanceof InterruptedException) Thread.currentThread().interrupt();

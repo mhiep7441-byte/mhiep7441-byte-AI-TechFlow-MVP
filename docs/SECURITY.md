@@ -30,3 +30,8 @@
 
 Worker không tự publish. Video hoàn tất luôn vào `DRAFT_REQUIRES_REVIEW`; người dùng
 phải xem lại nội dung, nguồn, caption và tài khoản đích trước bất kỳ thao tác đăng nào.
+
+TikTok access/refresh token được mã hóa AES-256-GCM bằng
+`TECHFLOW_TOKEN_ENCRYPTION_KEY` và không được API trả ra ngoài. OAuth state gắn với
+cả session và user ID. Endpoint đăng chỉ nhận media HTTPS từ Cloudinary, giới hạn
+kích thước file, gọi lại Creator Info, kiểm tra privacy option và bắt buộc consent rõ ràng.

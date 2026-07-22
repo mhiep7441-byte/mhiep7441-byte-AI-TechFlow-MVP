@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api } from './api';
 import { useAuth } from './AuthContext';
+import { evidenceSummary } from './utils';
 
 const taskDefaults = {
   title: '', description: '', topic: '', caption: '', hashtags: '',
@@ -214,13 +215,114 @@ function VideoStudioPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [tiktok, setTikTok] = useState(null);
+  const [showPublish, setShowPublish] = useState(false);
   const load = useCallback(() => api(`/api/tasks/${id}`).then((row) => { setTask(row); setForm({ ...taskDefaults, ...row, dueDate: row.dueDate || '' }); }).catch((reason) => setError(reason.message)), [id]);
   useEffect(() => { load(); const timer = window.setInterval(() => { if (task?.status === 'GENERATING') load(); }, 5000); return () => clearInterval(timer); }, [load, task?.status]);
+  useEffect(() => { api('/api/tiktok/status').then(setTikTok).catch(() => setTikTok({ configured: false, connected: false })); }, []);
+  const evidence = useMemo(() => evidenceSummary(task), [task]);
+  const { research, storyboard, sources, scenes } = evidence;
   if (!task && !error) return <Loader />;
   const save = async (event) => { event.preventDefault(); setBusy(true); setError(''); try { const updated = await api(`/api/tasks/${id}`, { method: 'PUT', body: { ...form, dueDate: form.dueDate || null } }); setTask(updated); setMessage('Đã lưu thay đổi.'); } catch (reason) { setError(reason.message); } finally { setBusy(false); } };
   const generate = async () => { setBusy(true); setError(''); try { await api(`/api/tasks/${id}/generate`, { method: 'POST' }); setMessage('Đã đưa video vào hàng đợi.'); await load(); } catch (reason) { setError(reason.message); } finally { setBusy(false); } };
   const copyCaption = async () => { await navigator.clipboard.writeText(`${form.caption}\n\n${form.hashtags}`.trim()); setMessage('Đã sao chép caption.'); };
-  return <div className="page studio-page"><button className="back-link" onClick={() => navigate('/videos')}><ArrowLeft /> Quay lại thư viện</button>{error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}{task && <div className="studio-layout"><section className="preview-panel"><div className="panel-label"><span>PREVIEW / 9:16</span><span className={`status ${task.status}`}>{statusLabels[task.status]}</span></div><div className="device-preview">{task.outputPath ? <video controls preload="metadata" src={task.outputPath} /> : <div><Film /><b>{task.status === 'GENERATING' ? 'Đang dựng video...' : 'Chưa có bản video'}</b><span>Tạo bản nháp để xem trước.</span></div>}</div><div className="preview-actions">{task.outputPath && <a className="button outline" href={task.outputPath} target="_blank" rel="noreferrer"><ExternalLink /> Mở video</a>}<button className="button dark" disabled={busy || task.status === 'GENERATING'} onClick={generate}><RefreshCw /> {task.outputPath ? 'Tạo lại' : 'Tạo bản nháp'}</button></div>{task.errorMessage && <div className="render-error">{task.errorMessage}</div>}</section><form className="editor-panel" onSubmit={save}><div className="editor-head"><div><span>VIDEO METADATA</span><h2>Chỉnh sửa nội dung</h2></div><button className="button dark" disabled={busy}><Check /> Lưu</button></div><label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label><label>Chủ đề<input maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></label><label>Mô tả<textarea rows="4" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label>Caption<textarea rows="5" maxLength="2200" value={form.caption} onChange={(e) => setForm({ ...form, caption: e.target.value })} /></label><label>Hashtags<input maxLength="500" value={form.hashtags} onChange={(e) => setForm({ ...form, hashtags: e.target.value })} placeholder="#AI #congnghe #TechFlowVN" /></label><div className="form-grid"><label>Trạng thái<select value={form.status} disabled={task.status === 'GENERATING'} onChange={(e) => setForm({ ...form, status: e.target.value })}>{Object.entries(statusLabels).filter(([value]) => value !== 'GENERATING').map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div><div className="publish-tools"><div><Send /><span><b>Chuẩn bị xuất bản</b><small>Luôn duyệt nội dung trước khi đăng.</small></span></div><button type="button" onClick={copyCaption}><Copy /> Sao chép caption</button><Link to="/calendar"><CalendarDays /> Lên lịch</Link></div></form></div>}</div>;
+  return <div className="page studio-page">
+    <button className="back-link" onClick={() => navigate('/videos')}><ArrowLeft /> Quay lại thư viện</button>
+    {error && <div className="alert error">{error}</div>}
+    {message && <div className="alert success">{message}</div>}
+    {task && <div className="studio-layout">
+      <section className="preview-panel">
+        <div className="panel-label"><span>PREVIEW / 9:16</span><span className={`status ${task.status}`}>{statusLabels[task.status]}</span></div>
+        <div className="device-preview">{task.outputPath ? <video controls preload="metadata" src={task.outputPath} /> : <div><Film /><b>{task.status === 'GENERATING' ? 'Đang dựng video...' : 'Chưa có bản video'}</b><span>Tạo bản nháp để xem trước.</span></div>}</div>
+        <div className="preview-actions">
+          {task.outputPath && <a className="button outline" href={task.outputPath} target="_blank" rel="noreferrer"><ExternalLink /> Mở video</a>}
+          <button className="button dark" disabled={busy || task.status === 'GENERATING'} onClick={generate}><RefreshCw /> {task.outputPath ? 'Tạo lại' : 'Tạo bản nháp'}</button>
+        </div>
+        {task.errorMessage && <div className="render-error">{task.errorMessage}</div>}
+        {(task.qualityScore != null || task.factCheckStatus !== 'NOT_CHECKED') && <div className="quality-card">
+          <div><Gauge /><span><small>QUALITY SCORE</small><b>{task.qualityScore ?? '—'}/100</b></span></div>
+          <div><ShieldCheck /><span><small>FACT CHECK</small><b>{task.factCheckStatus === 'VERIFIED' ? 'Đã kiểm chứng' : 'Cần duyệt'}</b></span></div>
+        </div>}
+      </section>
+
+      <form className="editor-panel" onSubmit={save}>
+        <div className="editor-head"><div><span>VIDEO METADATA</span><h2>Chỉnh sửa nội dung</h2></div><button className="button dark" disabled={busy}><Check /> Lưu</button></div>
+        <label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
+        <label>Chủ đề<input maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></label>
+        <label>Mô tả<textarea rows="4" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+        <label>Caption<textarea rows="5" maxLength="2200" value={form.caption} onChange={(e) => setForm({ ...form, caption: e.target.value })} /></label>
+        <label>Hashtags<input maxLength="500" value={form.hashtags} onChange={(e) => setForm({ ...form, hashtags: e.target.value })} placeholder="#AI #congnghe #TechFlowVN" /></label>
+        <div className="form-grid">
+          <label>Trạng thái<select value={form.status} disabled={task.status === 'GENERATING'} onChange={(e) => setForm({ ...form, status: e.target.value })}>{task.status === 'GENERATING' && <option value="GENERATING">Đang dựng</option>}{Object.entries(statusLabels).filter(([value]) => value !== 'GENERATING').map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+          <label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+        </div>
+        <div className="publish-tools"><div><Send /><span><b>{tiktok?.connected ? `TikTok • ${tiktok.displayName || 'Đã kết nối'}` : 'Chuẩn bị xuất bản'}</b><small>Duyệt nguồn và video trước khi gửi TikTok.</small></span></div><button type="button" onClick={copyCaption}><Copy /> Sao chép caption</button>{tiktok?.configured && !tiktok.connected ? <a href="/api/tiktok/connect"><Send /> Kết nối TikTok</a> : tiktok?.connected && task.outputPath ? <button type="button" className="publish-primary" onClick={() => setShowPublish(true)}><Check /> Duyệt & đăng TikTok</button> : <Link to="/calendar"><CalendarDays /> Lên lịch</Link>}</div>
+
+        {(sources.length > 0 || scenes.length > 0) && <section className="evidence-panel">
+          <div className="evidence-head"><div><ShieldCheck /><span><small>RESEARCH & STORYBOARD</small><h3>Dữ kiện đứng sau video</h3></span></div><span>{sources.length} nguồn • {scenes.length} cảnh</span></div>
+          {research.summary && <p className="research-summary">{research.summary}</p>}
+          {sources.length > 0 && <div className="source-list">{sources.map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={`${source.id}-${index}`}><span>{source.id || `S${index + 1}`}</span><div><b>{source.title || source.publisher}</b><small>{source.publisher}{source.published_at ? ` • ${source.published_at}` : ''}</small></div><ExternalLink /></a>)}</div>}
+          {scenes.length > 0 && <div className="scene-strip">{scenes.map((scene, index) => <article key={`${scene.title}-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><div><b>{scene.title}</b><small>{scene.character_action || scene.on_screen_text}</small></div></article>)}</div>}
+        </section>}
+      </form>
+    </div>}
+    {showPublish && task && <TikTokPublishModal task={task} onClose={() => setShowPublish(false)} onPublished={(result) => { setShowPublish(false); setMessage(`${result.message}. Mã: ${result.publishId}`); }} />}
+  </div>;
+}
+
+export function TikTokPublishModal({ task, onClose, onPublished }) {
+  const [creator, setCreator] = useState(null);
+  const [form, setForm] = useState({
+    consent: false,
+    privacyLevel: 'SELF_ONLY',
+    title: `${task.caption || task.title} ${task.hashtags || ''}`.trim(),
+    disableComment: false,
+    disableDuet: false,
+    disableStitch: false,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    api('/api/tiktok/creator-info').then((value) => {
+      setCreator(value);
+      const options = value.privacyLevelOptions || [];
+      setForm((current) => ({
+        ...current,
+        privacyLevel: options.includes('SELF_ONLY') ? 'SELF_ONLY' : (options[0] || ''),
+        disableComment: value.commentDisabled,
+        disableDuet: value.duetDisabled,
+        disableStitch: value.stitchDisabled,
+      }));
+    }).catch((reason) => setError(reason.message));
+  }, []);
+  const submit = async (event) => {
+    event.preventDefault(); setBusy(true); setError('');
+    try { onPublished(await api(`/api/tasks/${task.id}/publish/tiktok`, { method: 'POST', body: form })); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusy(false); }
+  };
+  const privacyLabels = {
+    PUBLIC_TO_EVERYONE: 'Mọi người',
+    MUTUAL_FOLLOW_FRIENDS: 'Bạn bè theo dõi lẫn nhau',
+    FOLLOWER_OF_CREATOR: 'Người theo dõi',
+    SELF_ONLY: 'Chỉ mình tôi',
+  };
+  return <div className="modal-backdrop"><form className="modal tiktok-modal" onSubmit={submit}>
+    <div className="modal-head"><div><span>TIKTOK DIRECT POST</span><h2>Duyệt & đăng video</h2></div><button type="button" onClick={onClose}><X /></button></div>
+    {error && <div className="form-error">{error}</div>}
+    {!creator && !error ? <Loader label="Đang lấy quyền đăng từ TikTok" /> : creator && <>
+      <div className="creator-card"><div><b>@{creator.username || creator.nickname || 'tiktok'}</b><small>Tối đa {creator.maxVideoPostDurationSec || 60} giây • TikTok quyết định quyền hiển thị hợp lệ</small></div><ShieldCheck /></div>
+      <label>Caption TikTok<textarea rows="5" maxLength="2200" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
+      <label>Quyền riêng tư<select required value={form.privacyLevel} onChange={(e) => setForm({ ...form, privacyLevel: e.target.value })}>{(creator.privacyLevelOptions || []).map((value) => <option value={value} key={value}>{privacyLabels[value] || value}</option>)}</select></label>
+      <div className="tiktok-toggles">
+        <label><input type="checkbox" checked={form.disableComment} disabled={creator.commentDisabled} onChange={(e) => setForm({ ...form, disableComment: e.target.checked })} /> Tắt bình luận</label>
+        <label><input type="checkbox" checked={form.disableDuet} disabled={creator.duetDisabled} onChange={(e) => setForm({ ...form, disableDuet: e.target.checked })} /> Tắt Duet</label>
+        <label><input type="checkbox" checked={form.disableStitch} disabled={creator.stitchDisabled} onChange={(e) => setForm({ ...form, disableStitch: e.target.checked })} /> Tắt Stitch</label>
+      </div>
+      <label className="consent-check"><input type="checkbox" checked={form.consent} onChange={(e) => setForm({ ...form, consent: e.target.checked })} /><span><b>Tôi đã xem video và đồng ý gửi video này tới TikTok.</b><small>App chưa audit có thể chỉ đăng ở chế độ “Chỉ mình tôi”. TikTok vẫn kiểm duyệt nội dung sau khi nhận.</small></span></label>
+      <button className="button dark full" disabled={busy || !form.consent || !form.privacyLevel}>{busy ? 'Đang truyền video...' : 'Duyệt & gửi TikTok'} <ArrowRight /></button>
+    </>}
+  </form></div>;
 }
 
 function CalendarPage() {

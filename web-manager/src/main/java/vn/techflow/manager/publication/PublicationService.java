@@ -12,6 +12,7 @@ import vn.techflow.manager.auth.AppUser;
 import vn.techflow.manager.auth.AuthService;
 import vn.techflow.manager.auth.UserRole;
 import vn.techflow.manager.task.TaskService;
+import vn.techflow.manager.task.WorkTask;
 
 import java.time.LocalDateTime;
 
@@ -64,6 +65,34 @@ public class PublicationService {
 
     @Transactional
     public void delete(Long id, Authentication authentication) { repository.delete(accessible(id, authentication)); }
+
+    @Transactional(readOnly = true)
+    public Publication getAccessibleEntity(Long id, Authentication authentication) {
+        return accessible(id, authentication);
+    }
+
+    @Transactional
+    public PublicationResponse recordTikTokSubmission(WorkTask task, String publishId) {
+        Publication item = new Publication();
+        item.setTask(task);
+        item.setPlatform(Platform.TIKTOK);
+        item.setStatus(PublicationStatus.PROCESSING);
+        item.setExternalId(publishId);
+        item.setNote("TikTok đang xử lý video sau khi người dùng đã duyệt và đồng ý gửi.");
+        return PublicationResponse.from(repository.save(item));
+    }
+
+    @Transactional
+    public PublicationResponse updateTikTokSubmission(String publishId, PublicationStatus status, String note) {
+        Publication item = repository.findWithTaskByExternalId(publishId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy lượt đăng TikTok"));
+        item.setStatus(status);
+        item.setNote(note == null ? "" : note.trim());
+        if (status == PublicationStatus.PUBLISHED && item.getPublishedAt() == null) {
+            item.setPublishedAt(LocalDateTime.now());
+        }
+        return PublicationResponse.from(repository.save(item));
+    }
 
     private Publication accessible(Long id, Authentication authentication) {
         Publication item = repository.findWithTaskById(id).orElseThrow(() ->

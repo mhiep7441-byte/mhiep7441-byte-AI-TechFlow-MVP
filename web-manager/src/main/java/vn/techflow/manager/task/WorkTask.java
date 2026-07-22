@@ -31,6 +31,15 @@ public class WorkTask {
     private String outputPath;
     @Column(length = 4000)
     private String errorMessage;
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String researchJson = "{}";
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String storyboardJson = "{}";
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String sourceUrls = "";
+    @Column(nullable = false, length = 40)
+    private String factCheckStatus = "NOT_CHECKED";
+    private Integer qualityScore;
     @JsonIgnore @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
     private AppUser owner;
@@ -63,6 +72,16 @@ public class WorkTask {
     public void setOutputPath(String outputPath) { this.outputPath = outputPath; }
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+    public String getResearchJson() { return researchJson; }
+    public void setResearchJson(String researchJson) { this.researchJson = researchJson; }
+    public String getStoryboardJson() { return storyboardJson; }
+    public void setStoryboardJson(String storyboardJson) { this.storyboardJson = storyboardJson; }
+    public String getSourceUrls() { return sourceUrls; }
+    public void setSourceUrls(String sourceUrls) { this.sourceUrls = sourceUrls; }
+    public String getFactCheckStatus() { return factCheckStatus; }
+    public void setFactCheckStatus(String factCheckStatus) { this.factCheckStatus = factCheckStatus; }
+    public Integer getQualityScore() { return qualityScore; }
+    public void setQualityScore(Integer qualityScore) { this.qualityScore = qualityScore; }
     public AppUser getOwner() { return owner; }
     public void setOwner(AppUser owner) { this.owner = owner; }
     public Long getOwnerId() { return owner == null ? null : owner.getId(); }

@@ -82,3 +82,19 @@ thể tạo lại sau khi đã xem báo cáo:
 .\audit-cleanup.ps1
 .\audit-cleanup.ps1 -Apply
 ```
+
+## Research và TikTok API
+
+| Method | Path | Chức năng |
+|---|---|---|
+| GET | `/api/tiktok/status` | Trạng thái cấu hình/kết nối, không lộ token |
+| GET | `/api/tiktok/connect` | Bắt đầu OAuth có state gắn với session |
+| GET | `/oauth/tiktok/callback` | Đổi authorization code và mã hóa token |
+| GET | `/api/tiktok/creator-info` | Lấy privacy và tùy chọn tương tác được phép |
+| POST | `/api/tasks/{id}/publish/tiktok` | Gửi một video đã duyệt sau consent rõ ràng |
+| POST | `/api/publications/{id}/tiktok/refresh` | Đồng bộ trạng thái xử lý từ TikTok |
+
+TikTok Developer Portal phải khai báo callback production chính xác:
+`https://ai-techflow-studio.onrender.com/oauth/tiktok/callback` và scope
+`video.publish` đã được duyệt. Trước khi TikTok audit client, Creator Info có thể chỉ
+cho phép `SELF_ONLY`; đây là giới hạn của nền tảng.

@@ -37,6 +37,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/config").permitAll()
                         .requestMatchers("/api/health").permitAll()
+                        .requestMatchers("/oauth/tiktok/callback").permitAll()
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                         .requestMatchers("/swagger", "/swagger-ui/**", "/api-docs/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

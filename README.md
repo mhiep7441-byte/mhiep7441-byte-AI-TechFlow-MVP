@@ -77,3 +77,31 @@ Health check công khai: `/api/health`. Các API dữ liệu còn lại yêu c�
 
 Tài liệu chi tiết: [`docs/WEB-MANAGER.md`](docs/WEB-MANAGER.md) và
 [`docs/SECURITY.md`](docs/SECURITY.md).
+
+## Research, storyboard và TikTok Direct Post
+
+- `research_agent.py` dùng OpenAI Responses API với web search, ưu tiên nguồn chính
+  thức/sơ cấp, lưu claim và URL; khi thiếu API key, chế độ mẫu được ghi rõ là offline.
+- `video_worker.py` tạo storyboard nhiều cảnh, nhân vật xuyên suốt, giọng Việt, phụ đề,
+  chuyển động dọc và báo cáo QC. Nguồn, storyboard, fact-check và quality score được
+  lưu trong PostgreSQL.
+- TikTok OAuth token được mã hóa AES-GCM. Direct Post chỉ chạy sau khi người dùng mở
+  hộp duyệt, chọn quyền riêng tư TikTok trả về và tích xác nhận đồng ý.
+- TikTok client chưa được audit có thể chỉ được đăng `SELF_ONLY`. Đăng công khai cần
+  TikTok duyệt scope `video.publish`; ứng dụng không vượt qua giới hạn này.
+
+Các biến production nằm trong `.env.example`. Không đưa secret thật vào Git. Tài liệu
+chính thức: [TikTok Direct Post](https://developers.tiktok.com/doc/content-posting-api-reference-direct-post),
+[TikTok Creator Info](https://developers.tiktok.com/doc/content-posting-api-get-started/) và
+[OpenAI models](https://developers.openai.com/api/docs/models).
+
+## Chạy test
+
+```powershell
+python -m pytest -q
+cd web-manager\frontend
+npm test
+npm run build
+cd ..
+mvn test
+```
