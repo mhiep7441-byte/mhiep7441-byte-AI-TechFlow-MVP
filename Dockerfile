@@ -18,4 +18,4 @@ RUN addgroup -S techflow && adduser -S techflow -G techflow
 COPY --from=backend /workspace/web-manager/target/web-manager-1.1.0.jar ./app.jar
 USER techflow
 EXPOSE 8080
-CMD ["sh", "-c", "if [ -n \"$DATABASE_URL_RAW\" ]; then export DATABASE_URL=\"jdbc:$DATABASE_URL_RAW\"; fi; exec java -jar /app/app.jar"]
+CMD ["sh", "-c", "if [ -n \"$DATABASE_URL_RAW\" ]; then db_target=\"${DATABASE_URL_RAW#postgresql://}\"; export DATABASE_URL=\"jdbc:postgresql://${db_target#*@}\"; fi; exec java -jar /app/app.jar"]
