@@ -58,7 +58,9 @@ public class SecurityConfig {
                                 org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)));
 
         if (registrations.getIfAvailable() != null) {
-            http.oauth2Login(oauth -> oauth.successHandler(oauthSuccessHandler));
+            http.oauth2Login(oauth -> oauth
+                    .loginPage("/login")
+                    .successHandler(oauthSuccessHandler));
         }
         return http.build();
     }
