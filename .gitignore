@@ -1,8 +1,11 @@
+data/*.db
+data/*.db-shm
+data/*.db-wal
+__pycache__/
+*.pyc
 .env
-.venv/
-outputs/
-web-manager/data/
 web-manager/target/
 web-manager/frontend/node_modules/
-web-manager/src/main/resources/static/
-*.log
+web-manager/frontend/dist/
+.idea/
+.vscode/

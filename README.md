@@ -1,98 +1,58 @@
-# AI TechFlow MVP
+# AI TechFlow Studio
 
-Hệ thống tạo video ngắn 9:16 cho kênh công nghệ, lập trình và xu hướng.
+Ứng dụng quản lý quy trình tạo video công nghệ, từ ý tưởng đến lịch xuất bản.
 
-## MVP làm được gì?
+## Kiến trúc
 
-1. Nhận một chủ đề.
-2. Dùng OpenAI để tạo kịch bản JSON nếu có `OPENAI_API_KEY`.
-3. Nếu chưa có API key, chạy bằng dữ liệu mẫu để kiểm tra pipeline.
-4. Tạo slide dọc 1080×1920.
-5. Tạo giọng đọc offline bằng Windows SAPI/pyttsx3.
-6. Ghép slide + voice thành MP4 bằng FFmpeg.
-7. Tạo file SRT và metadata đăng bài.
-8. Lưu toàn bộ kết quả theo từng job.
+- Backend: Java 21, Spring Boot, Hibernate/Spring Data JPA.
+- Database: PostgreSQL 17, migration bằng Flyway.
+- API docs: Swagger UI.
+- Frontend: React, Vite, Lucide icons.
 
-## Yêu cầu
-
-- Windows 10/11
-- Python 3.11+
-- FFmpeg có trong PATH
-- OpenAI API key (không bắt buộc để test)
-
-## Cài đặt
-
-Mở PowerShell trong thư mục dự án:
+## Chạy PostgreSQL
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
+docker compose up -d postgres
 ```
 
-Kiểm tra FFmpeg:
+## Chạy backend
 
 ```powershell
-ffmpeg -version
-ffprobe -version
+cd web-manager
+mvn spring-boot:run
 ```
 
-Nếu chưa có:
+Swagger: `http://localhost:8080/swagger`
+
+## Phát triển frontend
 
 ```powershell
-winget install Gyan.FFmpeg
+cd web-manager/frontend
+npm install
+npm run dev
 ```
 
-## Chạy thử không cần API
+Vite chuyển tiếp `/api` sang backend tại cổng 8080.
+
+## Build frontend vào Spring Boot
 
 ```powershell
-python main.py --topic "Codex có thể tự sửa bug như thế nào?"
+cd web-manager/frontend
+npm run build
+Copy-Item -Recurse -Force .\dist\* ..\src\main\resources\static\
 ```
 
-## Chạy bằng OpenAI
+Biến môi trường mẫu nằm trong `.env.example`. Không commit mật khẩu production hoặc API key.
 
-Mở `.env` và thêm:
-
-```env
-OPENAI_API_KEY=sk-...
-```
-
-Sau đó:
+Hoặc chạy toàn bộ bằng:
 
 ```powershell
-python main.py --topic "5 xu hướng AI coding đáng chú ý"
+Set-ExecutionPolicy -Scope Process Bypass
+.\run.ps1
 ```
 
-## Chạy tự động mỗi ngày
+## Deploy to Render
 
-```powershell
-python scheduler.py
-```
-
-Mặc định chạy lúc 08:00. Chỉnh trong `.env`:
-
-```env
-DAILY_RUN_TIME=08:00
-```
-
-## Kết quả
-
-```text
-outputs/
-└── 20260721_210000_codex-co-the-tu-sua-bug/
-    ├── script.json
-    ├── narration.txt
-    ├── narration.wav
-    ├── subtitles.srt
-    ├── metadata.json
-    ├── scenes/
-    └── final.mp4
-```
-
-## Lưu ý
-
-- Đây là MVP tạo bản nháp, chưa tự đăng TikTok/YouTube.
-- Luôn kiểm tra tính chính xác của tin công nghệ trước khi đăng.
-- Không dùng logo, hình ảnh hoặc footage không có quyền sử dụng.
-- Voice offline có thể chưa tự nhiên; có thể thay bằng OpenAI TTS hoặc ElevenLabs sau.
+The repository includes `Dockerfile` and `render.yaml` for React, Spring Boot,
+and PostgreSQL. In Render, choose **New > Blueprint**, connect this repository,
+and apply the Blueprint. Render provisions HTTPS and the database automatically.

@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: ai-techflow-studio
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: commit
+    healthCheckPath: /api/dashboard
+    envVars:
+      - key: DATABASE_URL_RAW
+        fromDatabase:
+          name: techflow-db
+          property: connectionString
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: techflow-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: techflow-db
+          property: password
+      - key: SERVER_PORT
+        value: 10000
+
+databases:
+  - name: techflow-db
+    plan: free
+    region: singapore
+    databaseName: techflow
+    user: techflow
+    postgresMajorVersion: "18"
