@@ -14,10 +14,11 @@ class TaskServiceRecoveryTest {
     @Test
     void marksInterruptedGenerationsAsFailedAfterRestart() {
         TaskRepository repository = mock(TaskRepository.class);
+        vn.techflow.manager.auth.AuthService authService = mock(vn.techflow.manager.auth.AuthService.class);
         WorkTask interrupted = new WorkTask();
         interrupted.setStatus(TaskStatus.GENERATING);
         when(repository.findAllByStatus(TaskStatus.GENERATING)).thenReturn(List.of(interrupted));
-        TaskService service = new TaskService(repository, ".", "python", "video_worker.py");
+        TaskService service = new TaskService(repository, authService, ".", "python", "video_worker.py");
 
         service.recoverInterruptedGenerations();
 

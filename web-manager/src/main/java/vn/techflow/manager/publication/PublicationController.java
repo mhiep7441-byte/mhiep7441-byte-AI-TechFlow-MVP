@@ -1,14 +1,11 @@
 package vn.techflow.manager.publication;
 
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
-@Tag(name = "Publications")
 @RestController
 @RequestMapping("/api/publications")
 public class PublicationController {
@@ -16,15 +13,28 @@ public class PublicationController {
 
     public PublicationController(PublicationService service) { this.service = service; }
 
-    @Operation(summary = "Danh sách lịch xuất bản")
-    @GetMapping public List<PublicationResponse> all() { return service.all(); }
-    @Operation(summary = "Tạo lịch xuất bản")
+    @GetMapping
+    public Page<PublicationResponse> search(
+            @RequestParam(required = false) PublicationStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        return service.search(status, page, size, authentication);
+    }
+
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
-    public PublicationResponse create(@Valid @RequestBody PublicationRequest request) { return service.create(request); }
-    @Operation(summary = "Cập nhật lịch xuất bản")
+    public PublicationResponse create(@Valid @RequestBody PublicationRequest request, Authentication authentication) {
+        return service.create(request, authentication);
+    }
+
     @PutMapping("/{id}")
-    public PublicationResponse update(@PathVariable Long id, @Valid @RequestBody PublicationRequest request) { return service.update(id, request); }
-    @Operation(summary = "Xóa lịch xuất bản")
+    public PublicationResponse update(@PathVariable Long id, @Valid @RequestBody PublicationRequest request,
+                                      Authentication authentication) {
+        return service.update(id, request, authentication);
+    }
+
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) { service.delete(id); }
+    public void delete(@PathVariable Long id, Authentication authentication) {
+        service.delete(id, authentication);
+    }
 }

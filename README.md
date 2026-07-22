@@ -5,9 +5,11 @@
 ## Kiến trúc
 
 - Backend: Java 21, Spring Boot, Hibernate/Spring Data JPA.
-- Database: PostgreSQL 17, migration bằng Flyway.
+- Database: PostgreSQL, Hibernate/Spring Data JPA, migration bằng Flyway.
 - API docs: Swagger UI.
-- Frontend: React, Vite, Lucide icons.
+- Frontend: React hooks, React Router DOM, Vite, Lucide icons.
+- Security: session authentication, BCrypt, CSRF, phân quyền `ADMIN`/`USER`, Google OAuth 2.0.
+- Video: Python worker, FFmpeg, giọng đọc tiếng Việt và Cloudinary.
 
 ## Chạy PostgreSQL
 
@@ -23,6 +25,9 @@ mvn spring-boot:run
 ```
 
 Swagger: `http://localhost:8080/swagger`
+
+Tài khoản quản trị đầu tiên được tạo từ `TECHFLOW_ADMIN_EMAIL` và
+`TECHFLOW_ADMIN_PASSWORD`. Không đặt mật khẩu production trong source code.
 
 ## Phát triển frontend
 
@@ -44,6 +49,17 @@ Copy-Item -Recurse -Force .\dist\* ..\src\main\resources\static\
 
 Biến môi trường mẫu nằm trong `.env.example`. Không commit mật khẩu production hoặc API key.
 
+## Google Login
+
+Tạo OAuth client loại **Web application**, sau đó cấu hình:
+
+- JavaScript origin: `https://ai-techflow-studio.onrender.com`
+- Redirect URI: `https://ai-techflow-studio.onrender.com/login/oauth2/code/google`
+- Render env: `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID`
+- Render env: `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET`
+
+Ứng dụng chỉ yêu cầu OpenID, email và hồ sơ cơ bản. Secret chỉ nằm trong biến môi trường.
+
 Hoặc chạy toàn bộ bằng:
 
 ```powershell
@@ -56,3 +72,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 The repository includes `Dockerfile` and `render.yaml` for React, Spring Boot,
 and PostgreSQL. In Render, choose **New > Blueprint**, connect this repository,
 and apply the Blueprint. Render provisions HTTPS and the database automatically.
+
+Health check công khai: `/api/health`. Các API dữ liệu còn lại yêu cầu đăng nhập.
+
+Tài liệu chi tiết: [`docs/WEB-MANAGER.md`](docs/WEB-MANAGER.md) và
+[`docs/SECURITY.md`](docs/SECURITY.md).

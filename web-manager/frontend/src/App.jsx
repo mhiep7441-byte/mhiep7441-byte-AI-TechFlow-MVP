@@ -1,64 +1,262 @@
-import { useMemo, useState } from 'react';
-import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
-  CalendarDays, CheckCircle2, ChevronRight, CirclePlay, Clock3, LayoutDashboard,
-  ListTodo, Plus, Search, ShieldCheck, Sparkles, Trash2, Video, WandSparkles, X,
+  ArrowLeft, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight,
+  CirclePlay, Clock3, Copy, ExternalLink, Film, Gauge, LayoutDashboard, ListFilter,
+  LogOut, Menu, MoreHorizontal, PencilLine, Plus, RefreshCw, Search, Send, Settings2,
+  ShieldCheck, Sparkles, Trash2, UserRound, UsersRound, WandSparkles, X,
 } from 'lucide-react';
-import { useTechFlowData } from './hooks/useTechFlowData';
+import { api } from './api';
+import { useAuth } from './AuthContext';
 
-const emptyTask = { title: '', description: '', topic: '', priority: 'MEDIUM', status: 'TODO', dueDate: '' };
-const emptyPublication = { taskId: '', platform: 'TIKTOK', status: 'PENDING', scheduledAt: '', note: '' };
-const labels = { TODO: 'Cần làm', IN_PROGRESS: 'Đang làm', GENERATING: 'Đang tạo', DRAFT_REQUIRES_REVIEW: 'Chờ duyệt', DONE: 'Hoàn tất', FAILED: 'Thất bại' };
-const publicationLabels = { PENDING: 'Đang lên lịch', READY: 'Sẵn sàng', PUBLISHED: 'Đã đăng', FAILED: 'Thất bại' };
-const statuses = Object.keys(labels);
-const lanes = [
-  { id: 'plan', title: 'Kế hoạch', hint: 'Ý tưởng và việc cần làm', statuses: ['TODO'], color: 'slate' },
-  { id: 'production', title: 'Đang sản xuất', hint: 'Nội dung đang được xử lý', statuses: ['IN_PROGRESS', 'GENERATING'], color: 'cyan' },
-  { id: 'review', title: 'Duyệt & hoàn tất', hint: 'Kiểm tra trước khi xuất bản', statuses: ['DRAFT_REQUIRES_REVIEW', 'DONE', 'FAILED'], color: 'violet' },
-];
-const pageMeta = {
-  '/': ['Tổng quan nội dung', 'Theo dõi toàn bộ quy trình sản xuất trong một nơi.'],
-  '/pipeline': ['Video pipeline', 'Kiểm soát tiến độ từ ý tưởng đến bản nháp.'],
-  '/calendar': ['Lịch nội dung', 'Lên lịch xuất bản sau khi video đã được duyệt.'],
+const taskDefaults = {
+  title: '', description: '', topic: '', caption: '', hashtags: '',
+  status: 'TODO', priority: 'MEDIUM', dueDate: '',
 };
+const statusLabels = {
+  TODO: 'Ý tưởng', IN_PROGRESS: 'Đang làm', GENERATING: 'Đang dựng',
+  DRAFT_REQUIRES_REVIEW: 'Chờ duyệt', DONE: 'Hoàn tất', FAILED: 'Lỗi',
+};
+const priorityLabels = { LOW: 'Thấp', MEDIUM: 'Trung bình', HIGH: 'Cao' };
 
-function TaskCard({ task, actions }) {
-  const remove = () => window.confirm('Xóa công việc này?') && actions.deleteTask(task.id);
-  return <article><div className="card-top"><span className={`priority ${task.priority}`}>{task.priority}</span><button className="icon" onClick={remove} aria-label="Xóa"><Trash2 /></button></div><h3>{task.title}</h3>{task.description && <p>{task.description}</p>}{task.topic && <div className="topic"><Sparkles />{task.topic}</div>}{task.errorMessage && <div className="error">{task.errorMessage}</div>}{task.outputPath && <div className="video-result"><video controls preload="metadata" src={task.outputPath} /><a href={task.outputPath} target="_blank" rel="noreferrer"><CirclePlay />Xem hoặc tải video</a></div>}<footer><span>{task.dueDate ? <><CalendarDays />{task.dueDate}</> : 'Chưa có hạn'}</span><select value={task.status} disabled={task.status === 'GENERATING'} onChange={(event) => actions.updateTask(task, event.target.value)}>{statuses.filter((status) => status !== 'GENERATING').map((status) => <option key={status} value={status}>{labels[status]}</option>)}</select></footer>{task.topic && task.status !== 'GENERATING' && <button className="generate" onClick={() => actions.generateDraft(task.id)}><CirclePlay />{task.outputPath ? 'Tạo lại video' : 'Tạo video nháp'}</button>}</article>;
+function Loader({ label = 'Đang tải dữ liệu' }) {
+  return <div className="loader-state"><span className="spinner" /><p>{label}</p></div>;
 }
 
-function TaskBoard({ tasks, actions }) {
+function EmptyState({ icon: Icon = Film, title, description, action }) {
+  return <div className="empty-state"><span><Icon /></span><h3>{title}</h3><p>{description}</p>{action}</div>;
+}
+
+function Pagination({ page, totalPages, onChange }) {
+  if (totalPages <= 1) return null;
+  return <div className="pagination">
+    <button disabled={page === 0} onClick={() => onChange(page - 1)}><ChevronLeft /> Trước</button>
+    <span>Trang <b>{page + 1}</b> / {totalPages}</span>
+    <button disabled={page + 1 >= totalPages} onClick={() => onChange(page + 1)}>Sau <ChevronRight /></button>
+  </div>;
+}
+
+function LoginPage() {
+  const { user, config, login, register } = useAuth();
+  const navigate = useNavigate();
+  const [mode, setMode] = useState('login');
+  const [form, setForm] = useState({ displayName: '', email: '', password: '' });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (user) return <Navigate to="/" replace />;
+
+  const submit = async (event) => {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      if (mode === 'login') await login({ email: form.email, password: form.password });
+      else await register(form);
+      navigate('/', { replace: true });
+    } catch (reason) { setError(reason.message); }
+    finally { setBusy(false); }
+  };
+
+  return <main className="auth-page">
+    <section className="auth-showcase">
+      <div className="auth-brand"><span>TF</span> AI TechFlow Studio</div>
+      <div className="showcase-copy"><p>CONTENT OPERATING SYSTEM</p><h1>Biến ý tưởng thành nội dung có thể tăng trưởng.</h1><span>Một nơi để lên kế hoạch, dựng video, duyệt nội dung và chuẩn bị xuất bản.</span></div>
+      <div className="showcase-grid">
+        <div className="showcase-card"><small>01 / CREATE</small><WandSparkles /><b>Kịch bản có cấu trúc</b><span>Luôn có bước kiểm chứng và duyệt.</span></div>
+        <div className="showcase-card cream"><small>02 / PRODUCE</small><Film /><b>Video dọc tự động</b><span>Giọng Việt, phụ đề và cloud delivery.</span></div>
+        <div className="showcase-card lilac"><small>03 / GROW</small><BarChart3 /><b>Vận hành như một studio</b><span>Dashboard, lịch đăng và phân quyền.</span></div>
+      </div>
+      <p className="auth-foot">Designed for creators who ship consistently.</p>
+    </section>
+    <section className="auth-panel">
+      <form onSubmit={submit}>
+        <div className="auth-kicker">AI TECHFLOW / VIETNAM</div>
+        <h2>{mode === 'login' ? 'Chào mừng trở lại.' : 'Tạo workspace của bạn.'}</h2>
+        <p>{mode === 'login' ? 'Đăng nhập để tiếp tục vận hành nội dung.' : 'Bắt đầu miễn phí, nâng cấp khi kênh phát triển.'}</p>
+        {error && <div className="form-error">{error}</div>}
+        {mode === 'register' && <label>Họ tên<input required maxLength="120" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /></label>}
+        <label>Email<input required type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+        <label>Mật khẩu<input required minLength="10" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label>
+        <button className="button dark full" disabled={busy}>{busy ? 'Đang xử lý...' : mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản'} <ArrowRight /></button>
+        {config.googleEnabled && <a className="google-button" href="/oauth2/authorization/google"><b>G</b> Tiếp tục với Google</a>}
+        <button type="button" className="text-button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}>
+          {mode === 'login' ? 'Chưa có tài khoản? Đăng ký' : 'Đã có tài khoản? Đăng nhập'}
+        </button>
+      </form>
+    </section>
+  </main>;
+}
+
+function Protected({ admin = false }) {
+  const { user, loading } = useAuth();
+  if (loading) return <Loader label="Đang xác thực" />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (admin && user.role !== 'ADMIN') return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+function AppShell() {
+  const { user, logout } = useAuth();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const pageTitle = pathname.startsWith('/videos/') ? 'Video Studio'
+    : pathname.startsWith('/videos') ? 'Thư viện video'
+      : pathname.startsWith('/calendar') ? 'Lịch nội dung'
+        : pathname.startsWith('/admin') ? 'Quản trị người dùng' : 'Tổng quan';
+  const doLogout = async () => { await logout(); navigate('/login'); };
+  const close = () => setMobileOpen(false);
+  return <div className="app-shell">
+    <aside className={mobileOpen ? 'sidebar open' : 'sidebar'}>
+      <Link className="brand" to="/" onClick={close}><span>TF</span><div>TechFlow<small>CONTENT STUDIO</small></div></Link>
+      <nav>
+        <NavLink to="/" end onClick={close}><LayoutDashboard /> Tổng quan</NavLink>
+        <NavLink to="/videos" onClick={close}><Film /> Video Studio</NavLink>
+        <NavLink to="/calendar" onClick={close}><CalendarDays /> Lịch nội dung</NavLink>
+        {user.role === 'ADMIN' && <NavLink to="/admin/users" onClick={close}><UsersRound /> Người dùng</NavLink>}
+      </nav>
+      <div className="sidebar-note"><ShieldCheck /><div><b>Review-first</b><span>Không đăng khi chưa duyệt.</span></div></div>
+      <div className="sidebar-user"><div className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</div><div><b>{user.displayName}</b><span>{user.role}</span></div><button onClick={doLogout} aria-label="Đăng xuất"><LogOut /></button></div>
+    </aside>
+    {mobileOpen && <button className="sidebar-backdrop" aria-label="Đóng menu" onClick={close} />}
+    <div className="app-content">
+      <header className="topbar"><button className="menu-button" onClick={() => setMobileOpen(true)}><Menu /></button><div><span>WORKSPACE / {user.role}</span><h1>{pageTitle}</h1></div><div className="top-actions"><Link className="button outline" to="/videos"><Search /> Tìm video</Link><Link className="button dark" to="/videos?new=1"><Plus /> Tạo nội dung</Link></div></header>
+      <Outlet />
+    </div>
+  </div>;
+}
+
+function DashboardPage() {
+  const [dashboard, setDashboard] = useState(null);
+  const [recent, setRecent] = useState([]);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    Promise.all([api('/api/dashboard'), api('/api/tasks?size=4')])
+      .then(([stats, tasks]) => { setDashboard(stats); setRecent(tasks.content); })
+      .catch((reason) => setError(reason.message));
+  }, []);
+  if (!dashboard && !error) return <Loader />;
+  return <div className="page dashboard-page">
+    {error && <div className="alert error">{error}</div>}
+    <section className="hero-section">
+      <div><p>TECHFLOW OPERATING SYSTEM</p><h2>Từ một chủ đề đến video sẵn sàng để tăng trưởng.</h2><span>Lập kế hoạch, tạo bản nháp, duyệt và lên lịch trong một quy trình rõ ràng.</span><div><Link className="button light" to="/videos?new=1">Tạo video mới <ArrowRight /></Link><Link className="hero-link" to="/videos">Xem pipeline</Link></div></div>
+      <div className="hero-visual"><div className="phone-card"><small>DRAFT / 9:16</small><Sparkles /><b>Video công nghệ<br />trong vài phút.</b><span>VOICE • CAPTION • CLOUD</span></div><span className="floating-tag">AI-assisted</span></div>
+    </section>
+    <section className="metric-grid">
+      {[
+        ['Tổng video', dashboard?.total, Gauge, 'Tất cả nội dung'],
+        ['Đang sản xuất', dashboard?.processing, Clock3, 'Worker đang chạy'],
+        ['Chờ duyệt', dashboard?.review, ShieldCheck, 'Cần quyết định'],
+        ['Đã hoàn tất', dashboard?.done, Check, 'Sẵn sàng sử dụng'],
+      ].map(([label, value, Icon, hint]) => <article className="metric-card" key={label}><div><Icon /><span>{label}</span></div><strong>{value ?? 0}</strong><small>{hint}</small></article>)}
+    </section>
+    <section className="feature-section"><div className="section-heading"><div><span>THE WORKFLOW</span><h2>Một studio, bốn năng lực cốt lõi.</h2></div><p>Thiết kế để vận hành nội dung đều đặn, không phải tạo một video rồi dừng.</p></div><div className="feature-grid">
+      {[
+        ['01', 'Kịch bản có cấu trúc', 'Ý tưởng, hook, narration và caption nằm cùng một nơi.', WandSparkles],
+        ['02', 'Video cloud-ready', 'FFmpeg tối ưu, giọng Việt và lưu trữ Cloudinary.', Film],
+        ['03', 'Duyệt trước khi đăng', 'Trạng thái rõ ràng giúp tránh nội dung sai hoặc chưa hoàn thiện.', ShieldCheck],
+        ['04', 'Lịch xuất bản', 'Chuẩn bị TikTok và YouTube theo lịch vận hành.', Send],
+      ].map(([number, title, text, Icon]) => <article className="feature-card" key={number}><div><small>{number}</small><Icon /></div><h3>{title}</h3><p>{text}</p></article>)}
+      </div>
+    </section>
+    <section className="recent-section"><div className="section-heading compact"><div><span>RECENT WORK</span><h2>Video gần đây</h2></div><Link to="/videos">Xem tất cả <ArrowRight /></Link></div>
+      <div className="recent-list">{recent.map((task) => <Link to={`/videos/${task.id}`} className="recent-row" key={task.id}><div className="video-thumb">{task.outputPath ? <video muted preload="metadata" src={task.outputPath} /> : <Film />}</div><div><b>{task.title}</b><span>{task.topic || 'Chưa có chủ đề'}</span></div><span className={`status ${task.status}`}>{statusLabels[task.status]}</span><ArrowRight /></Link>)}{!recent.length && <EmptyState title="Chưa có video" description="Tạo nội dung đầu tiên để bắt đầu." />}</div>
+    </section>
+  </div>;
+}
+
+function TaskModal({ onClose, onCreated }) {
+  const [form, setForm] = useState(taskDefaults);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault(); setBusy(true); setError('');
+    try { const created = await api('/api/tasks', { method: 'POST', body: { ...form, dueDate: form.dueDate || null } }); onCreated(created); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusy(false); }
+  };
+  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW CONTENT</span><h2>Tạo video mới</h2></div><button type="button" onClick={onClose}><X /></button></div>{error && <div className="form-error">{error}</div>}<label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: 5 công cụ AI cho lập trình viên" /></label><label>Chủ đề video<input required maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></label><label>Mô tả<textarea rows="4" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><div className="form-grid"><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Hạn hoàn thành<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label></div><button className="button dark full" disabled={busy}>{busy ? 'Đang lưu...' : 'Tạo công việc'} <ArrowRight /></button></form></div>;
+}
+
+function VideosPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [pageData, setPageData] = useState(null);
+  const [page, setPage] = useState(0);
   const [query, setQuery] = useState('');
-  const shown = useMemo(() => tasks.filter((task) => `${task.title} ${task.topic || ''}`.toLowerCase().includes(query.toLowerCase())), [tasks, query]);
-  return <section className="workspace"><div className="section-head"><div><p>QUY TRÌNH NỘI DUNG</p><h2>Bảng công việc</h2></div><div className="toolbar"><div className="search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm công việc..." /></div><span>{shown.length} công việc</span></div></div><section className="board">{lanes.map((lane) => { const items = shown.filter((task) => lane.statuses.includes(task.status)); return <div className={`column ${lane.color}`} key={lane.id}><div className="column-title"><div><i /><span><b>{lane.title}</b><small>{lane.hint}</small></span></div><strong>{items.length}</strong></div><div className="cards">{items.map((task) => <TaskCard key={task.id} task={task} actions={actions} />)}{!items.length && <div className="lane-empty"><span><Plus /></span><b>Chưa có công việc</b><small>{lane.id === 'plan' ? 'Tạo công việc đầu tiên để bắt đầu.' : 'Công việc sẽ xuất hiện tại đây.'}</small></div>}</div></div>; })}</section></section>;
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+  const [showCreate, setShowCreate] = useState(new URLSearchParams(location.search).get('new') === '1');
+  const load = useCallback(() => {
+    const params = new URLSearchParams({ page, size: 9, query });
+    if (status) params.set('status', status);
+    api(`/api/tasks?${params}`).then(setPageData).catch((reason) => setError(reason.message));
+  }, [page, query, status]);
+  useEffect(load, [load]);
+
+  const remove = async (task) => {
+    if (!window.confirm(`Xóa “${task.title}”?`)) return;
+    try { await api(`/api/tasks/${task.id}`, { method: 'DELETE' }); load(); }
+    catch (reason) { setError(reason.message); }
+  };
+  return <div className="page">
+    <section className="page-intro"><div><span>CONTENT LIBRARY</span><h2>Quản lý toàn bộ video.</h2><p>Tìm, lọc, mở studio chỉnh sửa và theo dõi trạng thái sản xuất.</p></div><button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo video</button></section>
+    {error && <div className="alert error">{error}</div>}
+    <section className="filter-bar"><div className="search-field"><Search /><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} placeholder="Tìm theo tiêu đề hoặc chủ đề..." /></div><div className="select-field"><ListFilter /><select value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }}><option value="">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></div></section>
+    {!pageData ? <Loader /> : pageData.content.length ? <><section className="video-grid">{pageData.content.map((task) => <article className="video-card" key={task.id}><Link className="video-poster" to={`/videos/${task.id}`}>{task.outputPath ? <video muted preload="metadata" src={task.outputPath} /> : <div className="poster-placeholder"><Sparkles /><b>{task.topic || 'AI TechFlow'}</b><span>9:16 DRAFT</span></div>}<span className={`status ${task.status}`}>{statusLabels[task.status]}</span></Link><div className="video-card-body"><div className="card-meta"><span>{priorityLabels[task.priority]}</span><span>{task.ownerName}</span></div><h3><Link to={`/videos/${task.id}`}>{task.title}</Link></h3><p>{task.description || 'Chưa có mô tả.'}</p><div className="card-actions"><Link to={`/videos/${task.id}`}><PencilLine /> Mở Studio</Link><button onClick={() => remove(task)}><Trash2 /></button></div></div></article>)}</section><Pagination page={pageData.number} totalPages={pageData.totalPages} onChange={setPage} /></> : <EmptyState title="Không tìm thấy video" description="Thử bộ lọc khác hoặc tạo nội dung mới." action={<button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo video</button>} />}
+    {showCreate && <TaskModal onClose={() => setShowCreate(false)} onCreated={(task) => { setShowCreate(false); navigate(`/videos/${task.id}`); }} />}
+  </div>;
 }
 
-function Overview({ tasks, stats, actions, openTask }) {
-  return <><section className="hero-card"><div className="hero-icon"><WandSparkles /></div><div><small>BẮT ĐẦU NHANH</small><h2>Tạo video công nghệ tiếp theo</h2><p>Nhập chủ đề, duyệt kịch bản và xuất video dọc 1080×1920.</p></div><button onClick={openTask}>Tạo nội dung <ChevronRight /></button></section><section className="stats"><div><span className="stat-icon blue"><ListTodo /></span><small>Tổng công việc</small><strong>{stats.total}</strong><em>Tất cả nội dung</em></div><div><span className="stat-icon cyan"><Clock3 /></span><small>Đang xử lý</small><strong>{stats.processing}</strong><em>Trong pipeline</em></div><div><span className="stat-icon amber"><Video /></span><small>Chờ duyệt</small><strong>{stats.reviewing}</strong><em>Cần bạn kiểm tra</em></div><div><span className="stat-icon green"><CheckCircle2 /></span><small>Hoàn tất</small><strong>{stats.completed}</strong><em>Sẵn sàng sử dụng</em></div></section><TaskBoard tasks={tasks} actions={actions} /></>;
+function VideoStudioPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [task, setTask] = useState(null);
+  const [form, setForm] = useState(taskDefaults);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => api(`/api/tasks/${id}`).then((row) => { setTask(row); setForm({ ...taskDefaults, ...row, dueDate: row.dueDate || '' }); }).catch((reason) => setError(reason.message)), [id]);
+  useEffect(() => { load(); const timer = window.setInterval(() => { if (task?.status === 'GENERATING') load(); }, 5000); return () => clearInterval(timer); }, [load, task?.status]);
+  if (!task && !error) return <Loader />;
+  const save = async (event) => { event.preventDefault(); setBusy(true); setError(''); try { const updated = await api(`/api/tasks/${id}`, { method: 'PUT', body: { ...form, dueDate: form.dueDate || null } }); setTask(updated); setMessage('Đã lưu thay đổi.'); } catch (reason) { setError(reason.message); } finally { setBusy(false); } };
+  const generate = async () => { setBusy(true); setError(''); try { await api(`/api/tasks/${id}/generate`, { method: 'POST' }); setMessage('Đã đưa video vào hàng đợi.'); await load(); } catch (reason) { setError(reason.message); } finally { setBusy(false); } };
+  const copyCaption = async () => { await navigator.clipboard.writeText(`${form.caption}\n\n${form.hashtags}`.trim()); setMessage('Đã sao chép caption.'); };
+  return <div className="page studio-page"><button className="back-link" onClick={() => navigate('/videos')}><ArrowLeft /> Quay lại thư viện</button>{error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}{task && <div className="studio-layout"><section className="preview-panel"><div className="panel-label"><span>PREVIEW / 9:16</span><span className={`status ${task.status}`}>{statusLabels[task.status]}</span></div><div className="device-preview">{task.outputPath ? <video controls preload="metadata" src={task.outputPath} /> : <div><Film /><b>{task.status === 'GENERATING' ? 'Đang dựng video...' : 'Chưa có bản video'}</b><span>Tạo bản nháp để xem trước.</span></div>}</div><div className="preview-actions">{task.outputPath && <a className="button outline" href={task.outputPath} target="_blank" rel="noreferrer"><ExternalLink /> Mở video</a>}<button className="button dark" disabled={busy || task.status === 'GENERATING'} onClick={generate}><RefreshCw /> {task.outputPath ? 'Tạo lại' : 'Tạo bản nháp'}</button></div>{task.errorMessage && <div className="render-error">{task.errorMessage}</div>}</section><form className="editor-panel" onSubmit={save}><div className="editor-head"><div><span>VIDEO METADATA</span><h2>Chỉnh sửa nội dung</h2></div><button className="button dark" disabled={busy}><Check /> Lưu</button></div><label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label><label>Chủ đề<input maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></label><label>Mô tả<textarea rows="4" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label>Caption<textarea rows="5" maxLength="2200" value={form.caption} onChange={(e) => setForm({ ...form, caption: e.target.value })} /></label><label>Hashtags<input maxLength="500" value={form.hashtags} onChange={(e) => setForm({ ...form, hashtags: e.target.value })} placeholder="#AI #congnghe #TechFlowVN" /></label><div className="form-grid"><label>Trạng thái<select value={form.status} disabled={task.status === 'GENERATING'} onChange={(e) => setForm({ ...form, status: e.target.value })}>{Object.entries(statusLabels).filter(([value]) => value !== 'GENERATING').map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div><div className="publish-tools"><div><Send /><span><b>Chuẩn bị xuất bản</b><small>Luôn duyệt nội dung trước khi đăng.</small></span></div><button type="button" onClick={copyCaption}><Copy /> Sao chép caption</button><Link to="/calendar"><CalendarDays /> Lên lịch</Link></div></form></div>}</div>;
 }
 
-function CalendarView({ items, actions, openPublication }) {
-  const grouped = useMemo(() => items.reduce((result, item) => { const day = item.scheduledAt ? item.scheduledAt.slice(0, 10) : 'Chưa lên ngày'; (result[day] ||= []).push(item); return result; }, {}), [items]);
-  return <section className="workspace calendar-view"><div className="section-head"><div><p>LỊCH XUẤT BẢN</p><h2>Kế hoạch nội dung</h2></div><button className="primary" onClick={openPublication}><Plus />Thêm lịch đăng</button></div><div className="calendar-list">{Object.entries(grouped).map(([day, rows]) => <div className="calendar-day" key={day}><div className="date-box"><CalendarDays /><b>{day}</b><small>{rows.length} nội dung</small></div><div className="schedule-items">{rows.map((item) => <article className="schedule-card" key={item.id}><div><span className={`platform ${item.platform}`}>{item.platform}</span><h3>{item.taskTitle}</h3><p>{item.note || 'Không có ghi chú'}</p></div><div className="schedule-meta"><span className={`publication-status ${item.status}`}>{publicationLabels[item.status]}</span><time>{item.scheduledAt ? item.scheduledAt.slice(11, 16) : '--:--'}</time><button className="icon" onClick={() => window.confirm('Xóa lịch đăng này?') && actions.deletePublication(item.id)}><Trash2 /></button></div></article>)}</div></div>)}{!items.length && <div className="big-empty"><CalendarDays /><h3>Chưa có lịch xuất bản</h3><p>Thêm lịch đăng sau khi video đã được bạn duyệt.</p><button className="primary" onClick={openPublication}><Plus />Tạo lịch đầu tiên</button></div>}</div></section>;
+function CalendarPage() {
+  const [items, setItems] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [page, setPage] = useState(0);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ taskId: '', platform: 'TIKTOK', status: 'PENDING', scheduledAt: '', note: '' });
+  const [error, setError] = useState('');
+  const load = useCallback(() => Promise.all([api(`/api/publications?page=${page}&size=20`), api('/api/tasks?size=50')]).then(([rows, taskRows]) => { setItems(rows); setTasks(taskRows.content); }).catch((reason) => setError(reason.message)), [page]);
+  useEffect(load, [load]);
+  const submit = async (event) => { event.preventDefault(); try { await api('/api/publications', { method: 'POST', body: { ...form, taskId: Number(form.taskId), scheduledAt: form.scheduledAt || null } }); setShowForm(false); load(); } catch (reason) { setError(reason.message); } };
+  return <div className="page"><section className="page-intro"><div><span>PUBLISHING PLAN</span><h2>Lịch nội dung rõ ràng.</h2><p>Chuẩn bị lịch TikTok và YouTube sau khi video đã được duyệt.</p></div><button className="button dark" onClick={() => setShowForm(true)}><Plus /> Thêm lịch</button></section>{error && <div className="alert error">{error}</div>}{!items ? <Loader /> : items.content.length ? <><div className="schedule-list">{items.content.map((item) => <article key={item.id}><div className="schedule-date"><CalendarDays /><b>{item.scheduledAt?.slice(0, 10) || 'Chưa đặt ngày'}</b><span>{item.scheduledAt?.slice(11, 16) || '--:--'}</span></div><div><span className={`platform ${item.platform}`}>{item.platform}</span><h3>{item.taskTitle}</h3><p>{item.note || 'Không có ghi chú'}</p></div><span className={`status publication-${item.status}`}>{item.status}</span></article>)}</div><Pagination page={items.number} totalPages={items.totalPages} onChange={setPage} /></> : <EmptyState icon={CalendarDays} title="Chưa có lịch đăng" description="Thêm lịch sau khi video đã được duyệt." />}{showForm && <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW SCHEDULE</span><h2>Thêm lịch đăng</h2></div><button type="button" onClick={() => setShowForm(false)}><X /></button></div><label>Video<select required value={form.taskId} onChange={(e) => setForm({ ...form, taskId: e.target.value })}><option value="">Chọn video</option>{tasks.map((task) => <option value={task.id} key={task.id}>{task.title}</option>)}</select></label><div className="form-grid"><label>Nền tảng<select value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })}><option>TIKTOK</option><option>YOUTUBE</option><option>OTHER</option></select></label><label>Ngày giờ<input required type="datetime-local" value={form.scheduledAt} onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })} /></label></div><label>Ghi chú<textarea rows="4" maxLength="1000" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label><button className="button dark full">Lưu lịch <ArrowRight /></button></form></div>}</div>;
 }
 
-function TaskModal({ onClose, onSave }) {
-  const [form, setForm] = useState(emptyTask);
-  const submit = async (event) => { event.preventDefault(); await onSave({ ...form, dueDate: form.dueDate || null }); onClose(); };
-  return <div className="modal-bg"><form className="modal" onSubmit={submit}><button type="button" className="close" onClick={onClose}><X /></button><p>CÔNG VIỆC MỚI</p><h2>Lên kế hoạch nội dung</h2><label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Ví dụ: 3 cách dùng Codex hiệu quả" /></label><label>Chủ đề video<input maxLength="500" value={form.topic} onChange={(event) => setForm({ ...form, topic: event.target.value })} /></label><label>Mô tả<textarea rows="3" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label><div className="row"><label>Ưu tiên<select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="LOW">Thấp</option><option value="MEDIUM">Trung bình</option><option value="HIGH">Cao</option></select></label><label>Hạn hoàn thành<input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></label></div><button className="primary submit">Tạo công việc</button></form></div>;
-}
-
-function PublicationModal({ tasks, onClose, onSave }) {
-  const [form, setForm] = useState(emptyPublication);
-  const submit = async (event) => { event.preventDefault(); await onSave({ ...form, taskId: Number(form.taskId), scheduledAt: form.scheduledAt || null }); onClose(); };
-  return <div className="modal-bg"><form className="modal" onSubmit={submit}><button type="button" className="close" onClick={onClose}><X /></button><p>LỊCH XUẤT BẢN MỚI</p><h2>Lên lịch nội dung</h2><label>Video/công việc<select required value={form.taskId} onChange={(event) => setForm({ ...form, taskId: event.target.value })}><option value="">Chọn công việc</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label><div className="row"><label>Nền tảng<select value={form.platform} onChange={(event) => setForm({ ...form, platform: event.target.value })}><option value="TIKTOK">TikTok</option><option value="YOUTUBE">YouTube</option><option value="OTHER">Khác</option></select></label><label>Ngày giờ<input required type="datetime-local" value={form.scheduledAt} onChange={(event) => setForm({ ...form, scheduledAt: event.target.value })} /></label></div><label>Ghi chú<textarea rows="3" value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label><button className="primary submit">Lưu lịch đăng</button></form></div>;
+function AdminUsersPage() {
+  const [data, setData] = useState(null);
+  const [page, setPage] = useState(0);
+  const [query, setQuery] = useState('');
+  const [error, setError] = useState('');
+  const load = useCallback(() => api(`/api/admin/users?page=${page}&size=20&query=${encodeURIComponent(query)}`).then(setData).catch((reason) => setError(reason.message)), [page, query]);
+  useEffect(load, [load]);
+  const update = async (user, changes) => { try { await api(`/api/admin/users/${user.id}`, { method: 'PUT', body: { displayName: user.displayName, role: user.role, enabled: user.enabled, ...changes } }); load(); } catch (reason) { setError(reason.message); } };
+  return <div className="page"><section className="page-intro"><div><span>ADMIN CONTROL</span><h2>Người dùng & phân quyền.</h2><p>Quản lý quyền truy cập workspace và trạng thái tài khoản.</p></div></section>{error && <div className="alert error">{error}</div>}<section className="filter-bar"><div className="search-field"><Search /><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} placeholder="Tìm email hoặc tên..." /></div></section>{!data ? <Loader /> : <><div className="user-table"><div className="user-row header"><span>Người dùng</span><span>Loại đăng nhập</span><span>Vai trò</span><span>Trạng thái</span></div>{data.content.map((user) => <div className="user-row" key={user.id}><div><span className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</span><span><b>{user.displayName}</b><small>{user.email}</small></span></div><span>{user.provider}</span><select value={user.role} onChange={(e) => update(user, { role: e.target.value })}><option value="USER">USER</option><option value="ADMIN">ADMIN</option></select><button className={user.enabled ? 'enabled-pill' : 'disabled-pill'} onClick={() => update(user, { enabled: !user.enabled })}>{user.enabled ? 'Đang hoạt động' : 'Đã khóa'}</button></div>)}</div><Pagination page={data.number} totalPages={data.totalPages} onChange={setPage} /></>}</div>;
 }
 
 export default function App() {
-  const { pathname } = useLocation();
-  const { tasks, publications, loading, error, stats, actions } = useTechFlowData();
-  const [taskModal, setTaskModal] = useState(false);
-  const [publicationModal, setPublicationModal] = useState(false);
-  const meta = pageMeta[pathname] || pageMeta['/'];
-  return <div className="shell"><aside><div className="brand"><span><Sparkles /></span><div>TechFlow<small>AI CONTENT STUDIO</small></div></div><nav><NavLink to="/" end><LayoutDashboard />Tổng quan</NavLink><NavLink to="/pipeline"><CirclePlay />Video pipeline</NavLink><NavLink to="/calendar"><CalendarDays />Lịch nội dung</NavLink></nav><div className="safe"><ShieldCheck /><div><b>Chế độ an toàn</b><small>Luôn duyệt trước khi đăng</small></div></div></aside><main><header><div><p>AI TECHFLOW STUDIO</p><h1>{meta[0]}</h1><span>{meta[1]}</span></div>{pathname !== '/calendar' && <button className="primary" onClick={() => setTaskModal(true)}><Plus />Tạo công việc</button>}</header>{error && <div className="global-error">{error}</div>}{loading && !tasks.length && <div className="global-error">Đang tải dữ liệu...</div>}<Routes><Route path="/" element={<Overview tasks={tasks} stats={stats} actions={actions} openTask={() => setTaskModal(true)} />} /><Route path="/pipeline" element={<TaskBoard tasks={tasks} actions={actions} />} /><Route path="/calendar" element={<CalendarView items={publications} actions={actions} openPublication={() => setPublicationModal(true)} />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></main>{taskModal && <TaskModal onClose={() => setTaskModal(false)} onSave={actions.createTask} />}{publicationModal && <PublicationModal tasks={tasks} onClose={() => setPublicationModal(false)} onSave={actions.createPublication} />}</div>;
+  return <Routes>
+    <Route path="/login" element={<LoginPage />} />
+    <Route element={<Protected />}><Route element={<AppShell />}>
+      <Route index element={<DashboardPage />} />
+      <Route path="videos" element={<VideosPage />} />
+      <Route path="videos/:id" element={<VideoStudioPage />} />
+      <Route path="calendar" element={<CalendarPage />} />
+      <Route element={<Protected admin />}><Route path="admin/users" element={<AdminUsersPage />} /></Route>
+    </Route></Route>
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes>;
 }

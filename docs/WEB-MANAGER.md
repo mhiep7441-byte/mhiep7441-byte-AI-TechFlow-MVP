@@ -1,41 +1,84 @@
 # AI TechFlow Web Manager
 
-## Kiến trúc
+## Chức năng
 
-- React/Vite: dashboard Kanban responsive.
-- Java 21 + Spring Boot: REST API và chạy pipeline Python bất đồng bộ.
-- H2 file database: tự tạo tại `web-manager/data/techflow.mv.db`, không cần cài DB server.
-- Swagger UI: `http://localhost:8080/swagger`.
-- H2 Console: `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:file:./data/techflow`, user `sa`, mật khẩu trống).
+- Dashboard responsive cho ADMIN và USER.
+- Đăng ký, đăng nhập, đăng xuất, Google OAuth 2.0 và phân quyền.
+- Thư viện video có tìm kiếm, lọc trạng thái và phân trang từ backend.
+- Video Studio để sửa tiêu đề, chủ đề, mô tả, caption, hashtag và xem MP4.
+- Python worker dựng video bằng FFmpeg; kết quả luôn về trạng thái
+  `DRAFT_REQUIRES_REVIEW` để người dùng kiểm tra trước.
+- Lịch TikTok/YouTube và trang quản trị người dùng.
+- PostgreSQL + Hibernate + Flyway; Swagger/OpenAPI tại `/swagger`.
 
-## Chạy
+## Chạy local
 
-Cần Java 21, Maven 3.9+, Node.js 20+, Python và FFmpeg. Từ thư mục gốc:
+Cần Java 21, Maven 3.9+, Node.js 20+, Python, PostgreSQL và FFmpeg.
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\run-web.ps1
+Copy-Item .env.example .env
+docker compose up -d postgres
+
+cd web-manager/frontend
+npm ci
+npm run build
+
+cd ..
+mvn spring-boot:run
 ```
 
-Mở `http://localhost:8080`. Lần chạy đầu tự tải package, build React và tạo database.
+Mở `http://localhost:8080`. Với local HTTP, đặt `SESSION_COOKIE_SECURE=false`.
 
-## API
+## API chính
 
-| Method | Path | Chức năng |
-|---|---|---|
-| GET | `/api/tasks` | Danh sách task |
-| POST | `/api/tasks` | Tạo task |
-| PUT | `/api/tasks/{id}` | Cập nhật task |
-| DELETE | `/api/tasks/{id}` | Xóa task |
-| POST | `/api/tasks/{id}/generate` | Chạy pipeline video |
+| Method | Path | Quyền | Chức năng |
+|---|---|---|---|
+| GET | `/api/health` | Public | Health check |
+| GET | `/api/auth/config` | Public | Kiểm tra Google Login đã bật |
+| POST | `/api/auth/register` | Public | Tạo USER local |
+| POST | `/api/auth/login` | Public | Đăng nhập session |
+| GET | `/api/auth/me` | User | Người dùng hiện tại + CSRF token |
+| POST | `/api/auth/logout` | User | Hủy session |
+| GET | `/api/dashboard` | User | Chỉ số theo người dùng; ADMIN xem toàn bộ |
+| GET | `/api/tasks` | User | Tìm/lọc/phân trang video |
+| POST | `/api/tasks` | User | Tạo công việc video |
+| GET | `/api/tasks/{id}` | Owner/Admin | Chi tiết Video Studio |
+| PUT | `/api/tasks/{id}` | Owner/Admin | Sửa metadata |
+| DELETE | `/api/tasks/{id}` | Owner/Admin | Xóa task |
+| POST | `/api/tasks/{id}/generate` | Owner/Admin | Chạy Python worker |
+| GET/POST | `/api/publications` | Owner/Admin | Danh sách/tạo lịch xuất bản |
+| GET/PUT | `/api/admin/users` | ADMIN | Phân trang và cập nhật tài khoản |
 
-Video thành công luôn có trạng thái `DRAFT_REQUIRES_REVIEW`; hệ thống không tự đăng.
+Các API phân trang dùng `page`, `size`, `query`; task hỗ trợ thêm `status`.
+Swagger mô tả request/response thực tế tại `http://localhost:8080/swagger`.
+
+## Quy trình video an toàn
+
+1. Người dùng tạo task và bấm **Tạo bản nháp**.
+2. Backend đặt trạng thái `GENERATING` và gọi `video_worker.py` bất đồng bộ.
+3. Worker tạo kịch bản/voice/slide, ghép FFmpeg và tải MP4 lên Cloudinary.
+4. Backend chỉ đặt `DRAFT_REQUIRES_REVIEW`; không tự đăng mạng xã hội.
+5. Người dùng xem lại video, sửa caption và tự quyết định lịch/xuất bản.
+
+## Deploy Render
+
+`render.yaml` tạo web service và PostgreSQL. Các secret cần nhập trong Render:
+
+- `OPENAI_API_KEY`
+- `CLOUDINARY_URL`
+- `TECHFLOW_ADMIN_EMAIL`
+- `TECHFLOW_ADMIN_PASSWORD`
+- `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID`
+- `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET`
+
+Production phải đặt `SESSION_COOKIE_SECURE=true` và dùng HTTPS.
 
 ## Bảo trì an toàn
 
-Không tự xóa dữ liệu người dùng. Chỉ nên dọn các thư mục có thể sinh lại (`web-manager/target`, `web-manager/frontend/node_modules`) sau khi đã dừng ứng dụng. Luôn xem báo cáo dung lượng trước khi xóa.
+Không tự xóa dữ liệu người dùng. Script dọn dẹp chỉ được áp dụng cho cache/build có
+thể tạo lại sau khi đã xem báo cáo:
 
 ```powershell
-.\audit-cleanup.ps1        # chỉ quét và báo cáo
-.\audit-cleanup.ps1 -Apply # chỉ xóa cache/build đã liệt kê
+.\audit-cleanup.ps1
+.\audit-cleanup.ps1 -Apply
 ```

@@ -7,7 +7,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     autoDeployTrigger: commit
-    healthCheckPath: /api/dashboard
+    healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL_RAW
         fromDatabase:
@@ -39,6 +39,18 @@ services:
         sync: false
       - key: CLOUDINARY_URL
         sync: false
+      - key: SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID
+        sync: false
+      - key: SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: TECHFLOW_ADMIN_EMAIL
+        sync: false
+      - key: TECHFLOW_ADMIN_PASSWORD
+        sync: false
+      - key: TECHFLOW_ADMIN_NAME
+        value: TechFlow Admin
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
 
 databases:
   - name: techflow-db
