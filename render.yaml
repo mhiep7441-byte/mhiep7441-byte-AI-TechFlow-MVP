@@ -23,6 +23,22 @@ services:
           property: password
       - key: SERVER_PORT
         value: 10000
+      - key: TECHFLOW_PROJECT_DIR
+        value: /app
+      - key: TECHFLOW_PYTHON_COMMAND
+        value: python3
+      - key: TECHFLOW_WORKER_SCRIPT
+        value: video_worker.py
+      - key: OUTPUT_DIR
+        value: /tmp/techflow-outputs
+      - key: CHANNEL_NAME
+        value: TechFlow VN
+      - key: TTS_VOICE
+        value: vi-VN-HoaiMyNeural
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CLOUDINARY_URL
+        sync: false
 
 databases:
   - name: techflow-db
