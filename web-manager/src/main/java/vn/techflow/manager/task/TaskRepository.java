@@ -4,6 +4,7 @@ import java.util.List;
 
 public interface TaskRepository extends JpaRepository<WorkTask, Long> {
     List<WorkTask> findAllByOrderByUpdatedAtDesc();
+    List<WorkTask> findAllByStatus(TaskStatus status);
     long countByStatus(TaskStatus status);
     long countByStatusIn(List<TaskStatus> statuses);
 }

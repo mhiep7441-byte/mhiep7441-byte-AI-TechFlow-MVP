@@ -14,7 +14,9 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
-WIDTH, HEIGHT, FPS = 1080, 1920, 24
+WIDTH = max(360, int(os.getenv("VIDEO_WIDTH", "540")))
+HEIGHT = max(640, int(os.getenv("VIDEO_HEIGHT", "960")))
+FPS = max(8, int(os.getenv("VIDEO_FPS", "12")))
 FFMPEG_THREADS = max(1, int(os.getenv("FFMPEG_THREADS", "1")))
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "/tmp/techflow-outputs"))
 CHANNEL_NAME = os.getenv("CHANNEL_NAME", "TechFlow VN")
@@ -134,33 +136,74 @@ def wrap(draw, value: str, font, max_width: int) -> list[str]:
     return lines
 
 
+def scale_x(value: int) -> int:
+    return round(value * WIDTH / 1080)
+
+
+def scale_y(value: int) -> int:
+    return round(value * HEIGHT / 1920)
+
+
+def scale_font(value: int) -> int:
+    return max(12, round(value * min(WIDTH / 1080, HEIGHT / 1920)))
+
+
+def scaled_box(x1: int, y1: int, x2: int, y2: int) -> tuple[int, int, int, int]:
+    return scale_x(x1), scale_y(y1), scale_x(x2), scale_y(y2)
+
+
 def draw_scene(scene: Scene, index: int, count: int, output: Path) -> None:
     from PIL import Image, ImageDraw
 
     image = Image.new("RGB", (WIDTH, HEIGHT), "#070B14")
     try:
         draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle((65, 80, 1015, 235), radius=38, fill="#14233A", outline="#2E83B7", width=3)
-        draw.text((105, 128), scene.title.upper(), font=selected_font(54, True), fill="#67D7FF")
-        for x in range(80, WIDTH, 140):
-            draw.line((x, 310, x, 1560), fill="#122039", width=2)
-        for y in range(330, 1560, 140):
-            draw.line((80, y, 1000, y), fill="#122039", width=2)
+        draw.rounded_rectangle(
+            scaled_box(65, 80, 1015, 235),
+            radius=scale_x(38),
+            fill="#14233A",
+            outline="#2E83B7",
+            width=max(1, scale_x(3)),
+        )
+        draw.text(
+            (scale_x(105), scale_y(128)),
+            scene.title.upper(),
+            font=selected_font(scale_font(54), True),
+            fill="#67D7FF",
+        )
+        for x in range(scale_x(80), WIDTH, max(1, scale_x(140))):
+            draw.line((x, scale_y(310), x, scale_y(1560)), fill="#122039", width=1)
+        for y in range(scale_y(330), scale_y(1560), max(1, scale_y(140))):
+            draw.line((scale_x(80), y, scale_x(1000), y), fill="#122039", width=1)
 
-        body = selected_font(76, True)
-        lines = wrap(draw, scene.on_screen_text, body, 850)
-        y = max(470, 880 - len(lines) * 58)
+        body = selected_font(scale_font(76), True)
+        lines = wrap(draw, scene.on_screen_text, body, scale_x(850))
+        y = max(scale_y(470), scale_y(880 - len(lines) * 58))
         for line in lines:
             box = draw.textbbox((0, 0), line, font=body)
             draw.text(((WIDTH - box[2]) / 2, y), line, font=body, fill="#F5FAFF")
-            y += 110
+            y += scale_y(110)
 
-        progress = int(860 * (index + 1) / count)
-        draw.rounded_rectangle((110, 1640, 970, 1660), radius=10, fill="#253451")
-        draw.rounded_rectangle((110, 1640, 110 + progress, 1660), radius=10, fill="#4BCBFF")
-        draw.text((110, 1745), CHANNEL_NAME, font=selected_font(36, True), fill="#67D7FF")
-        draw.text((890, 1745), f"{index + 1}/{count}", font=selected_font(34), fill="#A4B1C7")
-        image.save(output, optimize=True)
+        progress = int(scale_x(860) * (index + 1) / count)
+        draw.rounded_rectangle(scaled_box(110, 1640, 970, 1660), radius=scale_x(10), fill="#253451")
+        draw.rounded_rectangle(
+            (scale_x(110), scale_y(1640), scale_x(110) + progress, scale_y(1660)),
+            radius=scale_x(10),
+            fill="#4BCBFF",
+        )
+        draw.text(
+            (scale_x(110), scale_y(1745)),
+            CHANNEL_NAME,
+            font=selected_font(scale_font(36), True),
+            fill="#67D7FF",
+        )
+        draw.text(
+            (scale_x(890), scale_y(1745)),
+            f"{index + 1}/{count}",
+            font=selected_font(scale_font(34)),
+            fill="#A4B1C7",
+        )
+        image.save(output, compress_level=1)
     finally:
         image.close()
 
@@ -292,7 +335,9 @@ def upload_video(video: Path, job_id: str) -> str:
         public_id=f"techflow/{job_id}",
         overwrite=True,
     )
-    return str(result["secure_url"])
+    original_url = str(result["secure_url"])
+    delivery_transform = "c_scale,h_1920,w_1080,q_auto:eco"
+    return original_url.replace("/video/upload/", f"/video/upload/{delivery_transform}/", 1)
 
 
 def run(topic: str) -> str:

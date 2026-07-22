@@ -26,6 +26,9 @@ class VideoWorkerTests(unittest.TestCase):
         self.assertNotIn("silent.mp4", command)
         self.assertEqual("final.mp4", command[-1])
 
+    def test_render_canvas_defaults_to_free_tier_profile(self):
+        self.assertEqual((540, 960, 12), (video_worker.WIDTH, video_worker.HEIGHT, video_worker.FPS))
+
 
 if __name__ == "__main__":
     unittest.main()

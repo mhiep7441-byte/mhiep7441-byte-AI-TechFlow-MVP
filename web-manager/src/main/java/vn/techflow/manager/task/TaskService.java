@@ -1,6 +1,8 @@
 package vn.techflow.manager.task;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -30,6 +32,18 @@ public class TaskService {
 
     public List<WorkTask> all() {
         return repository.findAllByOrderByUpdatedAtDesc();
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void recoverInterruptedGenerations() {
+        List<WorkTask> interruptedTasks = repository.findAllByStatus(TaskStatus.GENERATING);
+        for (WorkTask task : interruptedTasks) {
+            task.setStatus(TaskStatus.FAILED);
+            task.setErrorMessage("Quá trình tạo video bị gián đoạn vì server khởi động lại. Hãy bấm Tạo video nháp để chạy lại.");
+        }
+        if (!interruptedTasks.isEmpty()) {
+            repository.saveAll(interruptedTasks);
+        }
     }
 
     public WorkTask get(Long id) {
