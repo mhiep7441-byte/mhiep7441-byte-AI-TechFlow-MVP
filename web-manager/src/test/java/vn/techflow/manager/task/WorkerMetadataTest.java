@@ -17,7 +17,7 @@ class WorkerMetadataTest {
                   "caption":"Nội dung đã kiểm chứng",
                   "hashtags":["#AI","#TechFlowVN"],
                   "research":{"sources":[{"url":"https://example.com/official"}]},
-                  "storyboard":{"scenes":[{"title":"HOOK"}]},
+                  "storyboard":{"provider":"gemini","scenes":[{"title":"HOOK"}]},
                   "fact_check":{"approved":true},
                   "quality":{"score":92}
                 }
@@ -31,6 +31,7 @@ class WorkerMetadataTest {
         assertEquals("#AI #TechFlowVN", metadata.hashtags());
         assertEquals("VERIFIED", metadata.factCheckStatus());
         assertEquals(92, metadata.qualityScore());
+        assertEquals("gemini", metadata.aiProvider());
         assertTrue(metadata.sourceUrls().contains("https://example.com/official"));
     }
 
@@ -39,6 +40,7 @@ class WorkerMetadataTest {
         WorkerMetadata metadata = WorkerMetadata.parse("VIDEO_READY=https://cdn.example/legacy.mp4\n");
         assertEquals("NOT_CHECKED", metadata.factCheckStatus());
         assertEquals("{}", metadata.researchJson());
+        assertEquals("fallback", metadata.aiProvider());
     }
 
     @Test

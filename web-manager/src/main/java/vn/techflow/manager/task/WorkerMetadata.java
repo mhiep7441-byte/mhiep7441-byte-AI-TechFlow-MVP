@@ -17,7 +17,8 @@ record WorkerMetadata(
         String storyboardJson,
         String sourceUrls,
         String factCheckStatus,
-        Integer qualityScore
+        Integer qualityScore,
+        String aiProvider
 ) {
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -27,7 +28,7 @@ record WorkerMetadata(
 
         String encodedMetadata = markerValue(output, "VIDEO_METADATA_B64=");
         if (encodedMetadata.isBlank()) {
-            return new WorkerMetadata(videoUrl, "", "", "{}", "{}", "", "NOT_CHECKED", null);
+            return new WorkerMetadata(videoUrl, "", "", "{}", "{}", "", "NOT_CHECKED", null, "fallback");
         }
 
         try {
@@ -52,7 +53,8 @@ record WorkerMetadata(
                     limit(JSON.writeValueAsString(storyboard), 120_000),
                     limit(String.join("\n", sources), 20_000),
                     factCheck.path("approved").asBoolean(false) ? "VERIFIED" : "NEEDS_REVIEW",
-                    quality.path("score").isInt() ? quality.path("score").asInt() : null
+                    quality.path("score").isInt() ? quality.path("score").asInt() : null,
+                    limit(storyboard.path("provider").asText("fallback"), 30)
             );
         } catch (IllegalArgumentException exception) {
             throw new IOException("Worker trả về metadata Base64 không hợp lệ", exception);

@@ -19,6 +19,7 @@ import vn.techflow.manager.auth.UserRole;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -110,7 +111,17 @@ public class TaskService {
     public CompletableFuture<Void> generate(Long id) {
         WorkTask task = internalGet(id);
         try {
-            Process process = new ProcessBuilder(pythonCommand, workerScript, "--topic", task.getTopic())
+            List<String> command = new ArrayList<>(List.of(
+                    pythonCommand, workerScript, "--topic", task.getTopic(),
+                    "--duration", String.valueOf(task.getTargetDurationSeconds())
+            ));
+            if (!task.getVisualStyle().isBlank()) {
+                command.addAll(List.of("--visual-style", task.getVisualStyle()));
+            }
+            if (!task.getCharacterDescription().isBlank()) {
+                command.addAll(List.of("--character", task.getCharacterDescription()));
+            }
+            Process process = new ProcessBuilder(command)
                     .directory(projectDirectory.toFile())
                     .redirectErrorStream(true)
                     .start();
@@ -124,6 +135,7 @@ public class TaskService {
             task.setSourceUrls(metadata.sourceUrls());
             task.setFactCheckStatus(metadata.factCheckStatus());
             task.setQualityScore(metadata.qualityScore());
+            task.setAiProvider(metadata.aiProvider());
             if (task.getCaption().isBlank()) {
                 task.setCaption(metadata.caption().isBlank() ? task.getTitle() : metadata.caption());
             }
@@ -157,6 +169,13 @@ public class TaskService {
         task.setHashtags(clean(request.hashtags()));
         task.setPriority(request.priority() == null ? Priority.MEDIUM : request.priority());
         task.setDueDate(request.dueDate());
+        if (request.targetDurationSeconds() != null) {
+            task.setTargetDurationSeconds(request.targetDurationSeconds());
+        } else if (creating) {
+            task.setTargetDurationSeconds(60);
+        }
+        task.setVisualStyle(clean(request.visualStyle()));
+        task.setCharacterDescription(clean(request.characterDescription()));
         if (request.status() != null) task.setStatus(request.status());
         else if (creating) task.setStatus(TaskStatus.TODO);
     }
