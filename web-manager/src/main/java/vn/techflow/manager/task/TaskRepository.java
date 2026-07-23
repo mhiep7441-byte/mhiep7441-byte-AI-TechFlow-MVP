@@ -10,6 +10,7 @@ import java.util.Optional;
 
 public interface TaskRepository extends JpaRepository<WorkTask, Long> {
     List<WorkTask> findAllByStatus(TaskStatus status);
+    List<WorkTask> findByCampaignIdOrderByEpisodeNumberAsc(Long campaignId);
 
     @Query("select t from WorkTask t left join fetch t.owner where t.id = :id")
     Optional<WorkTask> findWithOwnerById(Long id);

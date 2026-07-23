@@ -27,9 +27,17 @@ class FlywayMigrationTest {
         Integer researchColumns = jdbc.queryForObject(
                 "select count(*) from information_schema.columns where lower(table_name) = 'work_tasks' and lower(column_name) = 'research_json'",
                 Integer.class);
+        Integer campaignTables = jdbc.queryForObject(
+                "select count(*) from information_schema.tables where lower(table_name) = 'campaigns'",
+                Integer.class);
+        Integer durationColumns = jdbc.queryForObject(
+                "select count(*) from information_schema.columns where lower(table_name) = 'work_tasks' and lower(column_name) = 'target_duration_seconds'",
+                Integer.class);
 
-        assertTrue(version != null && version >= 4);
+        assertTrue(version != null && version >= 5);
         assertEquals(1, tiktokTables);
         assertEquals(1, researchColumns);
+        assertEquals(1, campaignTables);
+        assertEquals(1, durationColumns);
     }
 }

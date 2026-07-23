@@ -40,6 +40,16 @@ public class WorkTask {
     @Column(nullable = false, length = 40)
     private String factCheckStatus = "NOT_CHECKED";
     private Integer qualityScore;
+    @Column(nullable = false)
+    private Integer targetDurationSeconds = 60;
+    private Long campaignId;
+    private Integer episodeNumber;
+    @Column(nullable = false, length = 30)
+    private String aiProvider = "";
+    @Column(nullable = false, length = 240)
+    private String visualStyle = "";
+    @Column(nullable = false, length = 240)
+    private String characterDescription = "";
     @JsonIgnore @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
     private AppUser owner;
@@ -82,6 +92,18 @@ public class WorkTask {
     public void setFactCheckStatus(String factCheckStatus) { this.factCheckStatus = factCheckStatus; }
     public Integer getQualityScore() { return qualityScore; }
     public void setQualityScore(Integer qualityScore) { this.qualityScore = qualityScore; }
+    public Integer getTargetDurationSeconds() { return targetDurationSeconds; }
+    public void setTargetDurationSeconds(Integer targetDurationSeconds) { this.targetDurationSeconds = targetDurationSeconds; }
+    public Long getCampaignId() { return campaignId; }
+    public void setCampaignId(Long campaignId) { this.campaignId = campaignId; }
+    public Integer getEpisodeNumber() { return episodeNumber; }
+    public void setEpisodeNumber(Integer episodeNumber) { this.episodeNumber = episodeNumber; }
+    public String getAiProvider() { return aiProvider; }
+    public void setAiProvider(String aiProvider) { this.aiProvider = aiProvider; }
+    public String getVisualStyle() { return visualStyle; }
+    public void setVisualStyle(String visualStyle) { this.visualStyle = visualStyle; }
+    public String getCharacterDescription() { return characterDescription; }
+    public void setCharacterDescription(String characterDescription) { this.characterDescription = characterDescription; }
     public AppUser getOwner() { return owner; }
     public void setOwner(AppUser owner) { this.owner = owner; }
     public Long getOwnerId() { return owner == null ? null : owner.getId(); }

@@ -9,7 +9,7 @@
 - API docs: Swagger UI.
 - Frontend: React hooks, React Router DOM, Vite, Lucide icons.
 - Security: session authentication, BCrypt, CSRF, phân quyền `ADMIN`/`USER`, Google OAuth 2.0.
-- Video: Python worker, FFmpeg, giọng đọc tiếng Việt và Cloudinary.
+- Video: Python worker, Gemini/OpenAI, FFmpeg, giọng đọc tiếng Việt và Cloudinary.
 
 ## Chạy PostgreSQL
 
@@ -83,8 +83,14 @@ Tài liệu chi tiết: [`docs/WEB-MANAGER.md`](docs/WEB-MANAGER.md) và
 - `research_agent.py` dùng OpenAI Responses API với web search, ưu tiên nguồn chính
   thức/sơ cấp, lưu claim và URL; khi thiếu API key, chế độ mẫu được ghi rõ là offline.
 - `video_worker.py` tạo storyboard nhiều cảnh, nhân vật xuyên suốt, giọng Việt, phụ đề,
-  chuyển động dọc và báo cáo QC. Nguồn, storyboard, fact-check và quality score được
+  Ken Burns, chuyển cảnh `xfade` và báo cáo QC. Nguồn, storyboard, fact-check và quality score được
   lưu trong PostgreSQL.
+- Script Agent dùng `AI_PROVIDER=auto`: ưu tiên Gemini khi có `GEMINI_API_KEY`, sau đó
+  dùng OpenAI và cuối cùng là storyboard offline. Khóa chỉ được lưu trong Environment
+  của Render, không nằm trong React hoặc Git.
+- Trang **Campaign & Series** tạo 1–30 tập từ một chủ đề, thời lượng 30 giây–10 phút/tập,
+  giữ nhất quán phong cách và nhân vật. Mỗi tập là một task riêng và luôn ở
+  `DRAFT_REQUIRES_REVIEW` sau khi dựng.
 - TikTok OAuth token được mã hóa AES-GCM. Direct Post chỉ chạy sau khi người dùng mở
   hộp duyệt, chọn quyền riêng tư TikTok trả về và tích xác nhận đồng ý.
 - TikTok client chưa được audit có thể chỉ được đăng `SELF_ONLY`. Đăng công khai cần

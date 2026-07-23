@@ -1,5 +1,7 @@
 import unittest
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import video_worker
 from research_agent import offline_brief
@@ -42,8 +44,35 @@ class VideoWorkerTests(unittest.TestCase):
 
         filter_graph = command[command.index("-filter_complex") + 1]
         self.assertIn("zoompan", filter_graph)
-        self.assertIn("concat=n=2", filter_graph)
+        self.assertIn("xfade=transition=fade", filter_graph)
         self.assertEqual("2:a:0", command[command.index("-map", command.index("-map") + 1) + 1])
+
+    def test_long_form_scene_limit_and_duration_are_bounded(self):
+        self.assertEqual(6, video_worker.scene_limit(60))
+        self.assertEqual(30, video_worker.scene_limit(600))
+        self.assertEqual(600, video_worker.normalized_duration(999))
+
+    def test_auto_provider_prefers_gemini(self):
+        class FakeResponse:
+            text = '{"scenes":[]}'
+
+        class FakeModels:
+            def generate_content(self, **_kwargs):
+                return FakeResponse()
+
+        class FakeClient:
+            def __init__(self, **_kwargs):
+                self.models = FakeModels()
+
+        class FakeGenai:
+            Client = FakeClient
+
+        with patch.dict(os.environ, {"AI_PROVIDER": "auto", "GEMINI_API_KEY": "test-key"}, clear=False), \
+                patch.dict("sys.modules", {"google": type("Google", (), {"genai": FakeGenai})}):
+            data, provider = video_worker._generate_script_json("prompt")
+
+        self.assertEqual({"scenes": []}, data)
+        self.assertEqual("gemini", provider)
 
     def test_offline_fact_check_requires_review(self):
         plan = video_worker.fallback_plan("AI agent")
