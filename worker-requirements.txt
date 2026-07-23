@@ -1,0 +1,4 @@
+cloudinary>=1.41.0,<2
+edge-tts>=7.0.0,<8
+openai>=1.50.0,<3
+Pillow>=10.4.0,<13

@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: ai-techflow-studio
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: commit
+    healthCheckPath: /api/dashboard
+    envVars:
+      - key: DATABASE_URL_RAW
+        fromDatabase:
+          name: techflow-db
+          property: connectionString
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: techflow-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: techflow-db
+          property: password
+      - key: SERVER_PORT
+        value: 10000
+      - key: TECHFLOW_PROJECT_DIR
+        value: /app
+      - key: TECHFLOW_PYTHON_COMMAND
+        value: python3
+      - key: TECHFLOW_WORKER_SCRIPT
+        value: video_worker.py
+      - key: OUTPUT_DIR
+        value: /tmp/techflow-outputs
+      - key: CHANNEL_NAME
+        value: TechFlow VN
+      - key: TTS_VOICE
+        value: vi-VN-HoaiMyNeural
+      - key: RESEARCH_ALLOWED_DOMAINS
+        value: developers.openai.com,platform.openai.com,docs.python.org,docs.docker.com,developer.mozilla.org,docs.github.com,developers.tiktok.com
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CLOUDINARY_URL
+        sync: false
+
+databases:
+  - name: techflow-db
+    plan: free
+    region: singapore
+    databaseName: techflow
+    user: techflow
+    postgresMajorVersion: "18"
