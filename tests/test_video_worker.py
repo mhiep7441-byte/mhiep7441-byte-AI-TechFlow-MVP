@@ -1,4 +1,5 @@
 import unittest
+import os
 from unittest.mock import patch
 
 import video_worker
@@ -48,6 +49,27 @@ class VideoWorkerSafetyTests(unittest.TestCase):
         report = video_worker.assess_quality(plan)
         self.assertEqual(report.status, "PASS")
         self.assertEqual(report.score, 100)
+
+    def test_long_form_duration_expands_scene_limit(self):
+        self.assertEqual(video_worker._scene_limit(60), 6)
+        self.assertEqual(video_worker._scene_limit(600), 30)
+        self.assertEqual(video_worker._normalized_duration(999), 600)
+
+    def test_gemini_is_preferred_in_auto_mode(self):
+        research = video_worker.ResearchBrief(
+            "Gemini", [video_worker.Source("Google AI docs", "https://ai.google.dev/gemini-api/docs")]
+        )
+        expected = video_worker._fallback_plan("Gemini", research, 180)
+        expected.provider = "gemini"
+        with patch.dict(os.environ, {"AI_PROVIDER": "auto"}, clear=False), \
+                patch.object(video_worker, "_gemini_plan", return_value=expected) as gemini_plan, \
+                patch.object(video_worker, "_openai_plan") as openai_plan:
+            plan = video_worker.generate_plan("Gemini", research, target_duration_seconds=180)
+
+        self.assertEqual(plan.provider, "gemini")
+        self.assertEqual(plan.target_duration_seconds, 180)
+        gemini_plan.assert_called_once()
+        openai_plan.assert_not_called()
 
 
 if __name__ == "__main__":

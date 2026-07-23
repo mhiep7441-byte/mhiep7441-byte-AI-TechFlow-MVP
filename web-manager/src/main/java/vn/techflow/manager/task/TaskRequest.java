@@ -9,5 +9,6 @@ public record TaskRequest(
         LocalDate dueDate,
         @Size(max=240) String visualStyle,
         @Size(max=240) String characterDescription,
-        @Size(max=1000) String researchSources
+        @Size(max=1000) String researchSources,
+        @Min(30) @Max(600) Integer targetDurationSeconds
 ){}

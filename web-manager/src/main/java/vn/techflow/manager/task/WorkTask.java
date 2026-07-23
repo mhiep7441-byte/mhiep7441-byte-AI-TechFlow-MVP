@@ -13,6 +13,10 @@ public class WorkTask {
  @Column(length=240) private String visualStyle="";
  @Column(length=240) private String characterDescription="";
  @Column(length=1000) private String researchSources="";
+ @Column(nullable=false) private Integer targetDurationSeconds=60;
+ @Column private Long campaignId;
+ @Column private Integer episodeNumber;
+ @Column(length=30) private String aiProvider="";
  @Column private Integer qualityScore;
  @Column(length=30) private String qualityStatus="NEEDS_REVIEW";
  @Column(length=8000) private String qualityReport="";
@@ -26,6 +30,10 @@ public class WorkTask {
  public String getVisualStyle(){return visualStyle;} public void setVisualStyle(String v){visualStyle=v;}
  public String getCharacterDescription(){return characterDescription;} public void setCharacterDescription(String v){characterDescription=v;}
  public String getResearchSources(){return researchSources;} public void setResearchSources(String v){researchSources=v;}
+ public Integer getTargetDurationSeconds(){return targetDurationSeconds;} public void setTargetDurationSeconds(Integer v){targetDurationSeconds=v;}
+ public Long getCampaignId(){return campaignId;} public void setCampaignId(Long v){campaignId=v;}
+ public Integer getEpisodeNumber(){return episodeNumber;} public void setEpisodeNumber(Integer v){episodeNumber=v;}
+ public String getAiProvider(){return aiProvider;} public void setAiProvider(String v){aiProvider=v;}
  public Integer getQualityScore(){return qualityScore;} public void setQualityScore(Integer v){qualityScore=v;}
  public String getQualityStatus(){return qualityStatus;} public void setQualityStatus(String v){qualityStatus=v;}
  public String getQualityReport(){return qualityReport;} public void setQualityReport(String v){qualityReport=v;}

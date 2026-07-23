@@ -41,6 +41,11 @@ except ImportError:  # Optional when running the deterministic fallback.
     OpenAI = None
 
 try:
+    from google import genai
+except ImportError:  # Optional when Gemini is not configured.
+    genai = None
+
+try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:  # Optional for plan-only unit tests.
     Image = ImageDraw = ImageFont = None
@@ -50,7 +55,8 @@ WIDTH, HEIGHT, FPS = 1080, 1920, 24
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "/tmp/techflow-outputs"))
 CHANNEL_NAME = os.getenv("CHANNEL_NAME", "TechFlow VN")
 VOICE = os.getenv("TTS_VOICE", "vi-VN-HoaiMyNeural")
-MAX_SCENES = 6
+DEFAULT_TARGET_DURATION_SECONDS = 60
+MAX_TARGET_DURATION_SECONDS = 600
 USER_AGENT = "AI-TechFlow-Research/1.0 (+https://github.com/mhiep7441-byte/mhiep7441-byte-AI-TechFlow-MVP)"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
@@ -87,6 +93,8 @@ class VideoPlan:
     sources: list[Source] = field(default_factory=list)
     research_status: str = "NEEDS_REVIEW"
     disclaimer: str = "Kiểm tra nguồn và duyệt nội dung trước khi đăng."
+    provider: str = "fallback"
+    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS
 
 
 @dataclass
@@ -104,9 +112,15 @@ def assess_quality(plan: VideoPlan) -> QualityReport:
     def check(code: str, label: str, passed: bool, blocking: bool = True) -> None:
         checks.append({"code": code, "label": label, "passed": passed, "blocking": blocking})
 
-    check("scene_count", "Có từ 4 đến 6 cảnh", 4 <= len(plan.scenes) <= MAX_SCENES)
+    scene_limit = _scene_limit(plan.target_duration_seconds)
+    check("scene_count", f"Có từ 4 đến {scene_limit} cảnh", 4 <= len(plan.scenes) <= scene_limit)
     narration_length = sum(len(scene.narration.strip()) for scene in plan.scenes)
-    check("narration", "Lời thoại đủ dài cho video ngắn", 220 <= narration_length <= 5_400)
+    minimum_narration = max(220, plan.target_duration_seconds * 4)
+    check(
+        "narration",
+        "Lời thoại phù hợp thời lượng mục tiêu",
+        minimum_narration <= narration_length <= 18_000,
+    )
     check("visuals", "Mỗi cảnh có minh họa và hành động nhân vật", all(scene.visual_prompt.strip() and scene.character_action.strip() for scene in plan.scenes))
     check("caption", "Caption không rỗng và không vượt giới hạn", 1 <= len(plan.caption.strip()) <= 2_200)
     check("hashtags", "Có hashtag hợp lệ", 2 <= len(plan.hashtags) <= 8 and all(item.startswith("#") for item in plan.hashtags), False)
@@ -148,11 +162,26 @@ def slugify(value: str) -> str:
     return re.sub(r"[-\s]+", "-", value).strip("-")[:60] or "video"
 
 
+def _normalized_duration(value: int | str | None) -> int:
+    try:
+        duration = int(value or DEFAULT_TARGET_DURATION_SECONDS)
+    except (TypeError, ValueError):
+        duration = DEFAULT_TARGET_DURATION_SECONDS
+    return min(MAX_TARGET_DURATION_SECONDS, max(30, duration))
+
+
+def _scene_limit(target_duration_seconds: int) -> int:
+    """Give long-form scripts enough scene changes without creating huge jobs."""
+    duration = _normalized_duration(target_duration_seconds)
+    return min(30, max(6, (duration + 11) // 12))
+
+
 def _allowed_domains() -> set[str]:
     configured = os.getenv("RESEARCH_ALLOWED_DOMAINS", "").strip()
     if configured:
         return {item.strip().lower().lstrip(".") for item in configured.split(",") if item.strip()}
     return {
+        "ai.google.dev",
         "developers.openai.com",
         "platform.openai.com",
         "docs.python.org",
@@ -222,7 +251,11 @@ def research_topic(topic: str, source_urls: list[str] | None = None) -> Research
     return brief
 
 
-def _fallback_plan(topic: str, research: ResearchBrief) -> VideoPlan:
+def _fallback_plan(
+    topic: str,
+    research: ResearchBrief,
+    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
+) -> VideoPlan:
     source_line = "\n".join(source.title for source in research.sources) or "Chưa có nguồn tự động"
     return VideoPlan(
         topic,
@@ -238,6 +271,8 @@ def _fallback_plan(topic: str, research: ResearchBrief) -> VideoPlan:
         research.sources,
         "VERIFIED_SOURCES" if research.sources else "NEEDS_REVIEW",
         "Bản nháp AI: hãy kiểm tra nguồn, bản quyền và phụ đề trước khi đăng.",
+        "fallback",
+        _normalized_duration(target_duration_seconds),
     )
 
 
@@ -249,29 +284,36 @@ def _parse_json_object(value: str) -> dict[str, Any]:
     return json.loads(cleaned[start : end + 1])
 
 
-def _openai_plan(topic: str, research: ResearchBrief) -> VideoPlan:
-    key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not key or OpenAI is None:
-        return _fallback_plan(topic, research)
-    source_context = "\n\n".join(f"[{item.title}] {item.url}\n{item.excerpt}" for item in research.sources)
-    prompt = f"""Bạn là biên tập viên công nghệ Việt Nam. Tạo kịch bản dọc 40-55 giây cho chủ đề: {topic}.
-Chỉ dùng các dữ kiện có trong nguồn bên dưới; không bịa số liệu, không khẳng định tuyệt đối. Nếu nguồn không đủ, nói rõ cần kiểm chứng.
-Mỗi cảnh phải có nhân vật minh họa, hành động và một visual_prompt ngắn cho họa sĩ 2D.
-Trả JSON thuần theo schema: {{"topic":"...","scenes":[{{"title":"...","narration":"...","on_screen_text":"...","visual_prompt":"...","character_action":"..."}}],"caption":"...","hashtags":["#..."]}}.
-Tối đa {MAX_SCENES} cảnh, tối thiểu 4 cảnh. Nguồn tham khảo (không tự thêm URL):
-{source_context or "(không có nguồn, phải gắn cờ NEEDS_REVIEW)"}"""
-    response = OpenAI(api_key=key).responses.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
-        input=prompt,
+def _plan_prompt(topic: str, research: ResearchBrief, target_duration_seconds: int) -> str:
+    duration = _normalized_duration(target_duration_seconds)
+    scene_limit = _scene_limit(duration)
+    source_context = "\n\n".join(
+        f"[{item.title}] {item.url}\n{item.excerpt}" for item in research.sources
     )
-    data = _parse_json_object(response.output_text)
+    return f"""Bạn là biên tập viên công nghệ Việt Nam. Tạo kịch bản video dọc khoảng {duration} giây cho chủ đề: {topic}.
+Chỉ dùng dữ kiện có trong nguồn bên dưới; không bịa số liệu, không khẳng định tuyệt đối. Nếu nguồn không đủ, nói rõ cần kiểm chứng.
+Viết phần mở đầu có hook, thân bài có diễn tiến rõ ràng và kết thúc có lời kêu gọi phù hợp. Nội dung phải đủ sâu cho thời lượng mục tiêu, không lặp ý để kéo dài.
+Mỗi cảnh phải có nhân vật minh họa, hành động và một visual_prompt ngắn cho họa sĩ 2D/motion designer.
+Trả JSON thuần theo schema: {{"topic":"...","scenes":[{{"title":"...","narration":"...","on_screen_text":"...","visual_prompt":"...","character_action":"..."}}],"caption":"...","hashtags":["#..."]}}.
+Tối đa {scene_limit} cảnh, tối thiểu 4 cảnh. Nguồn tham khảo (không tự thêm URL):
+{source_context or "(không có nguồn, phải nêu rõ nội dung cần kiểm chứng)"}"""
+
+
+def _plan_from_data(
+    data: dict[str, Any],
+    topic: str,
+    research: ResearchBrief,
+    target_duration_seconds: int,
+    provider: str,
+) -> VideoPlan:
+    scene_limit = _scene_limit(target_duration_seconds)
     scenes: list[Scene] = []
-    for raw in data.get("scenes", [])[:MAX_SCENES]:
+    for raw in data.get("scenes", [])[:scene_limit]:
         if not isinstance(raw, dict):
             continue
         scenes.append(Scene(
             str(raw.get("title", "CẢNH"))[:80],
-            str(raw.get("narration", "")).strip()[:900],
+            str(raw.get("narration", "")).strip()[:1400],
             str(raw.get("on_screen_text", "")).strip()[:180],
             str(raw.get("visual_prompt", "Minh họa công nghệ hiện đại"))[:240],
             str(raw.get("character_action", "nhân vật giải thích"))[:180],
@@ -280,22 +322,92 @@ Tối đa {MAX_SCENES} cảnh, tối thiểu 4 cảnh. Nguồn tham khảo (khô
         raise ValueError("Kịch bản AI thiếu cảnh hoặc lời thoại")
     hashtags = [str(item) for item in data.get("hashtags", []) if str(item).startswith("#")][:8]
     return VideoPlan(
-        str(data.get("topic", topic))[:500], scenes,
+        str(data.get("topic", topic))[:500],
+        scenes,
         str(data.get("caption", f"{topic} — xem bản nháp và kiểm chứng trước khi đăng."))[:2200],
         hashtags or ["#congnghe", "#TechFlowVN"],
         research.sources,
         "VERIFIED_SOURCES" if research.sources else "NEEDS_REVIEW",
         "Bản nháp AI: hãy kiểm tra nguồn, bản quyền và phụ đề trước khi đăng.",
+        provider,
+        _normalized_duration(target_duration_seconds),
     )
 
 
-def generate_plan(topic: str, research: ResearchBrief | None = None, visual_style: str = "", character_description: str = "") -> VideoPlan:
+def _openai_plan(
+    topic: str,
+    research: ResearchBrief,
+    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
+) -> VideoPlan:
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not key or OpenAI is None:
+        raise RuntimeError("OpenAI chưa được cấu hình")
+    response = OpenAI(api_key=key).responses.create(
+        model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
+        input=_plan_prompt(topic, research, target_duration_seconds),
+    )
+    return _plan_from_data(
+        _parse_json_object(response.output_text),
+        topic,
+        research,
+        target_duration_seconds,
+        "openai",
+    )
+
+
+def _gemini_plan(
+    topic: str,
+    research: ResearchBrief,
+    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
+) -> VideoPlan:
+    key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not key or genai is None:
+        raise RuntimeError("Gemini chưa được cấu hình")
+    client = genai.Client(api_key=key)
+    response = client.models.generate_content(
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        contents=_plan_prompt(topic, research, target_duration_seconds),
+        config={"response_mime_type": "application/json"},
+    )
+    return _plan_from_data(
+        _parse_json_object(response.text or ""),
+        topic,
+        research,
+        target_duration_seconds,
+        "gemini",
+    )
+
+
+def generate_plan(
+    topic: str,
+    research: ResearchBrief | None = None,
+    visual_style: str = "",
+    character_description: str = "",
+    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
+) -> VideoPlan:
     research = research or research_topic(topic)
-    try:
-        plan = _openai_plan(topic, research)
-    except Exception as exc:
-        logging.warning("AI plan failed, using deterministic fallback: %s", exc)
-        plan = _fallback_plan(topic, research)
+    duration = _normalized_duration(target_duration_seconds)
+    provider = os.getenv("AI_PROVIDER", "auto").strip().lower()
+    if provider not in {"auto", "gemini", "openai"}:
+        raise ValueError("AI_PROVIDER chỉ nhận auto, gemini hoặc openai")
+    candidates = (
+        ["gemini", "openai"] if provider == "auto"
+        else [provider]
+    )
+    plan: VideoPlan | None = None
+    for candidate in candidates:
+        try:
+            plan = (
+                _gemini_plan(topic, research, duration)
+                if candidate == "gemini"
+                else _openai_plan(topic, research, duration)
+            )
+            break
+        except Exception as exc:
+            logging.warning("%s plan failed: %s", candidate, exc)
+    if plan is None:
+        logging.warning("No AI provider available; using deterministic fallback")
+        plan = _fallback_plan(topic, research, duration)
     if visual_style or character_description:
         for scene in plan.scenes:
             if visual_style:
@@ -436,31 +548,80 @@ def create_video(plan: VideoPlan, job_dir: Path) -> Path:
     weights = [max(1, len(scene.narration)) for scene in plan.scenes]
     weight_sum = sum(weights)
     cursor = 0.0
-    slides: list[str] = []
+    durations: list[float] = []
     subtitles: list[str] = []
     for index, (scene, weight) in enumerate(zip(plan.scenes, weights), start=1):
         seconds = total * weight / weight_sum
-        path = (scenes_dir / f"scene_{index - 1:02}.png").resolve().as_posix()
-        slides.extend([f"file '{path}'", f"duration {seconds:.3f}"])
+        durations.append(seconds)
         subtitles.append(f"{index}\n{srt_time(cursor)} --> {srt_time(cursor + seconds)}\n{scene.narration}\n")
         cursor += seconds
-    slides.append(f"file '{(scenes_dir / f'scene_{len(plan.scenes) - 1:02}.png').resolve().as_posix()}'")
-    (job_dir / "slides.txt").write_text("\n".join(slides), encoding="utf-8")
     (job_dir / "subtitles.srt").write_text("\n".join(subtitles), encoding="utf-8")
+    transition_duration = min(0.45, min(durations) / 4)
+    clips: list[Path] = []
+    for index, seconds in enumerate(durations):
+        clip = scenes_dir / f"clip_{index:02}.mp4"
+        clip_duration = seconds + (transition_duration if index < len(durations) - 1 else 0)
+        zoom_direction = "zoom+0.0007" if index % 2 == 0 else "zoom+0.0005"
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-t", f"{clip_duration:.3f}",
+            "-i", str(scenes_dir / f"scene_{index:02}.png"),
+            "-vf",
+            (
+                f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
+                f"crop={WIDTH}:{HEIGHT},"
+                f"zoompan=z='min({zoom_direction},1.06)':"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:"
+                f"s={WIDTH}x{HEIGHT}:fps={FPS},format=yuv420p"
+            ),
+            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", str(clip),
+        ], check=True)
+        clips.append(clip)
     silent, final = job_dir / "silent.mp4", job_dir / "final.mp4"
-    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(job_dir / "slides.txt"), "-vf", f"fps={FPS},format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", str(silent)], check=True)
+    transitions = ("fade", "slideleft", "smoothup", "circleopen")
+    inputs: list[str] = []
+    for clip in clips:
+        inputs.extend(["-i", str(clip)])
+    filters: list[str] = []
+    previous = "[0:v]"
+    offset = durations[0]
+    for index in range(1, len(clips)):
+        output_label = f"[v{index}]"
+        filters.append(
+            f"{previous}[{index}:v]xfade=transition={transitions[(index - 1) % len(transitions)]}:"
+            f"duration={transition_duration:.3f}:offset={offset:.3f}{output_label}"
+        )
+        previous = output_label
+        offset += durations[index]
+    subprocess.run([
+        "ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filters),
+        "-map", previous, "-an", "-c:v", "libx264", "-preset", "veryfast",
+        "-crf", "24", "-pix_fmt", "yuv420p", str(silent),
+    ], check=True)
     subprocess.run(["ffmpeg", "-y", "-i", str(silent), "-i", str(voice), "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", str(final)], check=True)
     return final
 
 
-def run(topic: str, upload: bool = True, source_urls: list[str] | None = None, visual_style: str = "", character_description: str = "") -> str:
+def run(
+    topic: str,
+    upload: bool = True,
+    source_urls: list[str] | None = None,
+    visual_style: str = "",
+    character_description: str = "",
+    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
+) -> str:
     if not topic or not topic.strip():
         raise ValueError("Chủ đề video không được để trống")
     job_id = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{slugify(topic)}"
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     research = research_topic(topic, source_urls)
-    plan = generate_plan(topic, research, visual_style, character_description)
+    plan = generate_plan(
+        topic,
+        research,
+        visual_style,
+        character_description,
+        target_duration_seconds,
+    )
     quality = assess_quality(plan)
     (job_dir / "script.json").write_text(json.dumps(asdict(plan), ensure_ascii=False, indent=2), encoding="utf-8")
     (job_dir / "research.json").write_text(json.dumps(asdict(research), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -469,6 +630,7 @@ def run(topic: str, upload: bool = True, source_urls: list[str] | None = None, v
     print(f"QUALITY_SCORE={quality.score}", flush=True)
     print(f"QUALITY_STATUS={quality.status}", flush=True)
     print(f"QUALITY_REPORT={json.dumps(asdict(quality), ensure_ascii=True, separators=(',', ':'))}", flush=True)
+    print(f"AI_PROVIDER_USED={plan.provider}", flush=True)
     video = create_video(plan, job_dir)
     if not upload:
         return str(video)
@@ -490,10 +652,11 @@ if __name__ == "__main__":
     parser.add_argument("--sources", default="", help="Comma-separated HTTPS source URLs")
     parser.add_argument("--visual-style", default="", help="Optional visual direction for every scene")
     parser.add_argument("--character", default="", help="Optional host/character description")
+    parser.add_argument("--duration", type=int, default=DEFAULT_TARGET_DURATION_SECONDS, help="Target duration in seconds (30-600)")
     args = parser.parse_args()
     try:
         sources = [item.strip() for item in args.sources.split(",") if item.strip()]
-        print(f"VIDEO_READY={run(args.topic, upload=not args.no_upload, source_urls=sources or None, visual_style=args.visual_style, character_description=args.character)}", flush=True)
+        print(f"VIDEO_READY={run(args.topic, upload=not args.no_upload, source_urls=sources or None, visual_style=args.visual_style, character_description=args.character, target_duration_seconds=args.duration)}", flush=True)
     except Exception as exc:
         logging.exception("Tạo video thất bại: %s", exc)
         sys.exit(1)

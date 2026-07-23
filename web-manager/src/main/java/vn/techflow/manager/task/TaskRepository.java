@@ -6,4 +6,5 @@ public interface TaskRepository extends JpaRepository<WorkTask, Long> {
     List<WorkTask> findAllByOrderByUpdatedAtDesc();
     long countByStatus(TaskStatus status);
     long countByStatusIn(List<TaskStatus> statuses);
+    List<WorkTask> findByCampaignIdOrderByEpisodeNumberAsc(Long campaignId);
 }

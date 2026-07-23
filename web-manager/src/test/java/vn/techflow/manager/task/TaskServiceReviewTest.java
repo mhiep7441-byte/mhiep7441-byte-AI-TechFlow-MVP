@@ -48,7 +48,7 @@ class TaskServiceReviewTest {
         TaskService service = new TaskService(repository, ".", "python", "video_worker.py");
 
         TaskRequest request = new TaskRequest("Demo", "", "topic", TaskStatus.DONE,
-                Priority.MEDIUM, null, "studio", "host", "https://docs.example.test");
+                Priority.MEDIUM, null, "studio", "host", "https://docs.example.test", 60);
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
                 () -> service.save(task, request));
 

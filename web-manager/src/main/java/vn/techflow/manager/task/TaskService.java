@@ -65,6 +65,7 @@ public class TaskService {
         task.setVisualStyle(request.visualStyle() == null ? "" : request.visualStyle().trim());
         task.setCharacterDescription(request.characterDescription() == null ? "" : request.characterDescription().trim());
         task.setResearchSources(request.researchSources() == null ? "" : request.researchSources().trim());
+        task.setTargetDurationSeconds(request.targetDurationSeconds() == null ? 60 : request.targetDurationSeconds());
         return repository.save(task);
     }
 
@@ -107,6 +108,7 @@ public class TaskService {
         repository.save(task);
         try {
             List<String> command = new ArrayList<>(List.of(pythonCommand, workerScript, "--topic", task.getTopic()));
+            command.addAll(List.of("--duration", String.valueOf(task.getTargetDurationSeconds() == null ? 60 : task.getTargetDurationSeconds())));
             if (task.getResearchSources() != null && !task.getResearchSources().isBlank()) {
                 command.addAll(List.of("--sources", task.getResearchSources().replaceAll("\\s*\\R\\s*", ",")));
             }
@@ -133,6 +135,7 @@ public class TaskService {
             task.setQualityScore(parseQualityScore(marker(output, "QUALITY_SCORE=")));
             task.setQualityStatus(defaultValue(marker(output, "QUALITY_STATUS="), "NEEDS_REVIEW"));
             task.setQualityReport(defaultValue(marker(output, "QUALITY_REPORT="), "{}"));
+            task.setAiProvider(defaultValue(marker(output, "AI_PROVIDER_USED="), "fallback"));
             task.setStatus(TaskStatus.DRAFT_REQUIRES_REVIEW);
         } catch (Exception exception) {
             if (exception instanceof InterruptedException) {

@@ -15,17 +15,20 @@ const json = (method, body) => ({
 export function useTechFlowData(refreshInterval = 5000) {
   const [tasks, setTasks] = useState([]);
   const [publications, setPublications] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const [taskRows, publicationRows] = await Promise.all([
+      const [taskRows, publicationRows, campaignRows] = await Promise.all([
         api('/api/tasks'),
         api('/api/publications'),
+        api('/api/campaigns'),
       ]);
       setTasks(taskRows);
       setPublications(publicationRows);
+      setCampaigns(campaignRows);
       setError('');
     } catch (reason) {
       setError(`Không thể tải dữ liệu: ${reason.message}`);
@@ -69,6 +72,9 @@ export function useTechFlowData(refreshInterval = 5000) {
     generateDraft: (id) => mutate(`/api/tasks/${id}/generate`, { method: 'POST' }),
     createPublication: (publication) => mutate('/api/publications', json('POST', publication)),
     deletePublication: (id) => mutate(`/api/publications/${id}`, { method: 'DELETE' }),
+    createCampaign: (campaign) => mutate('/api/campaigns', json('POST', campaign)),
+    createCampaignEpisodes: (id) => mutate(`/api/campaigns/${id}/episodes`, { method: 'POST' }),
+    deleteCampaign: (id) => mutate(`/api/campaigns/${id}`, { method: 'DELETE' }),
   }), [mutate]);
 
   const stats = useMemo(() => ({
@@ -78,5 +84,5 @@ export function useTechFlowData(refreshInterval = 5000) {
     completed: tasks.filter((task) => task.status === 'DONE').length,
   }), [tasks]);
 
-  return { tasks, publications, loading, error, stats, actions, reload: load };
+  return { tasks, publications, campaigns, loading, error, stats, actions, reload: load };
 }

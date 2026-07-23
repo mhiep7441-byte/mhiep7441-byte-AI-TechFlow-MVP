@@ -3,15 +3,19 @@ import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
   CalendarDays, CheckCircle2, ChevronRight, CirclePlay, Clock3, LayoutDashboard,
   Clapperboard, Globe2, ListTodo, Plus, Search, ShieldCheck, Sparkles, Trash2,
-  RefreshCw, TrendingUp, UserRound, Video, WandSparkles, X,
+  RefreshCw, TrendingUp, UserRound, Video, WandSparkles, X, Layers3, Bot,
 } from 'lucide-react';
 import { useTechFlowData } from './hooks/useTechFlowData';
 
 const emptyTask = {
   title: '', description: '', topic: '', priority: 'MEDIUM', status: 'TODO', dueDate: '',
-  visualStyle: '', characterDescription: '', researchSources: '',
+  visualStyle: '', characterDescription: '', researchSources: '', targetDurationSeconds: 60,
 };
 const emptyPublication = { taskId: '', platform: 'TIKTOK', status: 'PENDING', scheduledAt: '', note: '' };
+const emptyCampaign = {
+  name: '', theme: '', description: '', episodeCount: 5, targetDurationSeconds: 60,
+  visualStyle: '', characterDescription: '', status: 'PLANNING',
+};
 const labels = { TODO: 'Cần làm', IN_PROGRESS: 'Đang làm', GENERATING: 'Đang tạo', DRAFT_REQUIRES_REVIEW: 'Chờ duyệt', DONE: 'Hoàn tất', FAILED: 'Thất bại' };
 const publicationLabels = { PENDING: 'Đang lên lịch', READY: 'Sẵn sàng', PUBLISHED: 'Đã đăng', FAILED: 'Thất bại' };
 const statuses = Object.keys(labels);
@@ -25,6 +29,7 @@ const pageMeta = {
   '/pipeline': ['Video pipeline', 'Kiểm soát tiến độ từ ý tưởng đến bản nháp.'],
   '/videos': ['Thư viện video', 'Xem lại, duyệt và quản lý các bản nháp video.'],
   '/trends': ['Xu hướng công nghệ', 'Nguồn ý tưởng được cập nhật để bạn kiểm chứng và sản xuất.'],
+  '/campaigns': ['Campaign & series', 'Xây chuỗi nội dung nhất quán thành nhiều tập.'],
   '/calendar': ['Lịch nội dung', 'Lên lịch xuất bản sau khi video đã được duyệt.'],
 };
 
@@ -36,6 +41,11 @@ function TaskCard({ task, actions }) {
     <h3>{task.title}</h3>
     {task.description && <p>{task.description}</p>}
     {task.topic && <div className="topic"><Sparkles />{task.topic}</div>}
+    {(task.campaignId || task.targetDurationSeconds || task.aiProvider) && <div className="task-metadata">
+      {task.campaignId && <span><Layers3 />Tập {task.episodeNumber}</span>}
+      <span><Clock3 />{task.targetDurationSeconds || 60} giây</span>
+      {task.aiProvider && <span><Bot />{task.aiProvider}</span>}
+    </div>}
     {(task.visualStyle || task.characterDescription || task.researchSources) && <div className="creative-brief" aria-label="Tóm tắt định hướng video">
       {task.visualStyle && <span><Clapperboard />{task.visualStyle}</span>}
       {task.characterDescription && <span><UserRound />{task.characterDescription}</span>}
@@ -113,6 +123,48 @@ function CalendarView({ items, actions, openPublication }) {
   return <section className="workspace calendar-view"><div className="section-head"><div><p>LỊCH XUẤT BẢN</p><h2>Kế hoạch nội dung</h2></div><button className="primary" onClick={openPublication}><Plus />Thêm lịch đăng</button></div><div className="calendar-list">{Object.entries(grouped).map(([day, rows]) => <div className="calendar-day" key={day}><div className="date-box"><CalendarDays /><b>{day}</b><small>{rows.length} nội dung</small></div><div className="schedule-items">{rows.map((item) => <article className="schedule-card" key={item.id}><div><span className={`platform ${item.platform}`}>{item.platform}</span><h3>{item.taskTitle}</h3><p>{item.note || 'Không có ghi chú'}</p></div><div className="schedule-meta"><span className={`publication-status ${item.status}`}>{publicationLabels[item.status]}</span><time>{item.scheduledAt ? item.scheduledAt.slice(11, 16) : '--:--'}</time><button className="icon" onClick={() => window.confirm('Xóa lịch đăng này?') && actions.deletePublication(item.id)}><Trash2 /></button></div></article>)}</div></div>)}{!items.length && <div className="big-empty"><CalendarDays /><h3>Chưa có lịch xuất bản</h3><p>Thêm lịch đăng sau khi video đã được bạn duyệt.</p><button className="primary" onClick={openPublication}><Plus />Tạo lịch đầu tiên</button></div>}</div></section>;
 }
 
+function CampaignView({ campaigns, tasks, actions, openCampaign }) {
+  const taskCount = (campaignId) => tasks.filter((task) => task.campaignId === campaignId).length;
+  return <section className="workspace campaigns-view">
+    <div className="section-head"><div><p>CONTENT ENGINE</p><h2>Campaign và series nhiều tập</h2></div><button className="primary" onClick={openCampaign}><Plus />Tạo campaign</button></div>
+    <div className="campaign-intro"><Layers3 /><div><b>Một chủ đề, nhiều góc kể chuyện</b><span>Gemini hoặc OpenAI viết từng tập theo thời lượng mục tiêu. Mỗi video vẫn qua Quality Gate và bước duyệt thủ công.</span></div></div>
+    <div className="campaign-grid">{campaigns.map((campaign) => {
+      const generated = taskCount(campaign.id);
+      return <article className="campaign-card" key={campaign.id}>
+        <div className="campaign-top"><span className={`campaign-status ${campaign.status}`}>{campaign.status}</span><button className="icon" onClick={() => window.confirm('Xóa campaign? Các video đã tạo vẫn được giữ lại.') && actions.deleteCampaign(campaign.id)}><Trash2 /></button></div>
+        <h3>{campaign.name}</h3><p>{campaign.description || campaign.theme}</p>
+        <div className="campaign-theme">{campaign.theme}</div>
+        <div className="campaign-stats"><span><Layers3 /><b>{campaign.episodeCount}</b> tập</span><span><Clock3 /><b>{campaign.targetDurationSeconds}</b> giây/tập</span><span><Video /><b>{generated}</b> đã tạo</span></div>
+        <button className="generate" disabled={generated > 0} onClick={() => actions.createCampaignEpisodes(campaign.id)}><WandSparkles />{generated > 0 ? 'Đã tạo danh sách tập' : 'Tạo toàn bộ tập'}</button>
+      </article>;
+    })}{!campaigns.length && <div className="big-empty campaign-empty"><Layers3 /><h3>Chưa có campaign</h3><p>Tạo một series để biến chủ đề lớn thành chuỗi video có cấu trúc.</p><button className="primary" onClick={openCampaign}><Plus />Tạo campaign đầu tiên</button></div>}</div>
+  </section>;
+}
+
+function CampaignModal({ onClose, onSave }) {
+  const [form, setForm] = useState(emptyCampaign);
+  const submit = async (event) => {
+    event.preventDefault();
+    await onSave({
+      ...form,
+      name: form.name.trim(),
+      theme: form.theme.trim(),
+      episodeCount: Number(form.episodeCount),
+      targetDurationSeconds: Number(form.targetDurationSeconds),
+    });
+    onClose();
+  };
+  return <div className="modal-bg"><form className="modal" onSubmit={submit}>
+    <button type="button" className="close" onClick={onClose}><X /></button><p>CAMPAIGN MỚI</p><h2>Xây series nội dung</h2>
+    <label>Tên campaign<input required maxLength="160" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ví dụ: 7 ngày làm chủ AI Agent" /></label>
+    <label>Chủ đề xuyên suốt<input required maxLength="500" value={form.theme} onChange={(event) => setForm({ ...form, theme: event.target.value })} placeholder="Kiến thức và cách ứng dụng AI Agent cho người mới" /></label>
+    <label>Mô tả series<textarea rows="3" maxLength="2000" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+    <div className="brief-grid"><label>Số tập<input required type="number" min="1" max="30" value={form.episodeCount} onChange={(event) => setForm({ ...form, episodeCount: event.target.value })} /></label><label>Thời lượng mỗi tập<select value={form.targetDurationSeconds} onChange={(event) => setForm({ ...form, targetDurationSeconds: event.target.value })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label></div>
+    <div className="brief-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(event) => setForm({ ...form, visualStyle: event.target.value })} placeholder="Editorial 2D, chuyển cảnh neon..." /></label><label>Nhân vật xuyên suốt<input maxLength="240" value={form.characterDescription} onChange={(event) => setForm({ ...form, characterDescription: event.target.value })} placeholder="Host nữ công nghệ, áo xanh..." /></label></div>
+    <button className="primary submit"><Layers3 />Tạo campaign</button>
+  </form></div>;
+}
+
 function TaskModal({ onClose, onSave, initialTopic = '' }) {
   const [form, setForm] = useState(() => ({ ...emptyTask, topic: initialTopic }));
   const [validationError, setValidationError] = useState('');
@@ -137,7 +189,8 @@ function TaskModal({ onClose, onSave, initialTopic = '' }) {
     <div className="brief-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(event) => setForm({ ...form, visualStyle: event.target.value })} placeholder="Studio neon, motion graphics..." /></label><label>Nhân vật / host<input maxLength="240" value={form.characterDescription} onChange={(event) => setForm({ ...form, characterDescription: event.target.value })} placeholder="Nữ host công nghệ, thân thiện..." /></label></div>
     <label>Nguồn nghiên cứu<textarea rows="2" maxLength="1000" value={form.researchSources} onChange={(event) => { setValidationError(''); setForm({ ...form, researchSources: event.target.value }); }} placeholder="Mỗi URL một dòng (khuyến nghị nguồn chính thức)" /><small className="field-hint">Nguồn giúp bạn đối chiếu thông tin trước khi duyệt bản nháp.</small></label>
     {validationError && <div className="form-error" role="alert">{validationError}</div>}
-    <div className="row"><label>Ưu tiên<select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="LOW">Thấp</option><option value="MEDIUM">Trung bình</option><option value="HIGH">Cao</option></select></label><label>Hạn hoàn thành<input type="date" min={new Date().toISOString().slice(0, 10)} value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></label></div><button className="primary submit">Tạo công việc</button></form></div>;
+    <div className="row"><label>Thời lượng mục tiêu<select value={form.targetDurationSeconds} onChange={(event) => setForm({ ...form, targetDurationSeconds: Number(event.target.value) })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label><label>Ưu tiên<select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="LOW">Thấp</option><option value="MEDIUM">Trung bình</option><option value="HIGH">Cao</option></select></label></div>
+    <label>Hạn hoàn thành<input type="date" min={new Date().toISOString().slice(0, 10)} value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></label><button className="primary submit">Tạo công việc</button></form></div>;
 }
 
 function PublicationModal({ tasks, onClose, onSave }) {
@@ -149,13 +202,38 @@ function PublicationModal({ tasks, onClose, onSave }) {
 
 export default function App() {
   const { pathname } = useLocation();
-  const { tasks, publications, loading, error, stats, actions } = useTechFlowData();
+  const { tasks, publications, campaigns, loading, error, stats, actions } = useTechFlowData();
   const [taskModal, setTaskModal] = useState(false);
   const [initialTopic, setInitialTopic] = useState('');
   const [publicationModal, setPublicationModal] = useState(false);
+  const [campaignModal, setCampaignModal] = useState(false);
   const openTask = (topic = '') => { setInitialTopic(topic); setTaskModal(true); };
   const closeTask = () => { setTaskModal(false); setInitialTopic(''); };
   const meta = pageMeta[pathname] || pageMeta['/'];
-  if (pathname === '/trends') return <div className="shell"><aside><div className="brand"><span><Sparkles /></span><div>TechFlow<small>AI CONTENT STUDIO</small></div></div><nav><NavLink to="/" end><LayoutDashboard />Tổng quan</NavLink><NavLink to="/pipeline"><CirclePlay />Video pipeline</NavLink><NavLink to="/videos"><Video />Thư viện video</NavLink><NavLink to="/trends"><TrendingUp />Xu hướng</NavLink><NavLink to="/calendar"><CalendarDays />Lịch nội dung</NavLink></nav><div className="safe"><ShieldCheck /><div><b>Chế độ an toàn</b><small>Luôn duyệt trước khi đăng</small></div></div></aside><main><header><div><p>AI TECHFLOW STUDIO</p><h1>{meta[0]}</h1><span>{meta[1]}</span></div><button className="primary" onClick={() => openTask()}><Plus />Tạo công việc</button></header><TrendsView onCreateTask={openTask} />{taskModal && <TaskModal onClose={closeTask} onSave={actions.createTask} initialTopic={initialTopic} />}</main></div>;
-  return <div className="shell"><aside><div className="brand"><span><Sparkles /></span><div>TechFlow<small>AI CONTENT STUDIO</small></div></div><nav><NavLink to="/" end><LayoutDashboard />Tổng quan</NavLink><NavLink to="/pipeline"><CirclePlay />Video pipeline</NavLink><NavLink to="/videos"><Video />Thư viện video</NavLink><NavLink to="/calendar"><CalendarDays />Lịch nội dung</NavLink></nav><div className="safe"><ShieldCheck /><div><b>Chế độ an toàn</b><small>Luôn duyệt trước khi đăng</small></div></div></aside><main><header><div><p>AI TECHFLOW STUDIO</p><h1>{meta[0]}</h1><span>{meta[1]}</span></div>{pathname !== '/calendar' && <button className="primary" onClick={() => setTaskModal(true)}><Plus />Tạo công việc</button>}</header>{error && <div className="global-error">{error}</div>}{loading && !tasks.length && <div className="global-error">Đang tải dữ liệu...</div>}<Routes><Route path="/" element={<Overview tasks={tasks} stats={stats} actions={actions} openTask={() => setTaskModal(true)} />} /><Route path="/pipeline" element={<TaskBoard tasks={tasks} actions={actions} />} /><Route path="/videos" element={<TaskBoard tasks={tasks} actions={actions} />} /><Route path="/calendar" element={<CalendarView items={publications} actions={actions} openPublication={() => setPublicationModal(true)} />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></main>{taskModal && <TaskModal onClose={() => setTaskModal(false)} onSave={actions.createTask} />}{publicationModal && <PublicationModal tasks={tasks} onClose={() => setPublicationModal(false)} onSave={actions.createPublication} />}</div>;
+  return <div className="shell">
+    <aside><div className="brand"><span><Sparkles /></span><div>TechFlow<small>AI CONTENT STUDIO</small></div></div><nav>
+      <NavLink to="/" end><LayoutDashboard />Tổng quan</NavLink>
+      <NavLink to="/pipeline"><CirclePlay />Video pipeline</NavLink>
+      <NavLink to="/campaigns"><Layers3 />Campaign & series</NavLink>
+      <NavLink to="/videos"><Video />Thư viện video</NavLink>
+      <NavLink to="/trends"><TrendingUp />Xu hướng</NavLink>
+      <NavLink to="/calendar"><CalendarDays />Lịch nội dung</NavLink>
+    </nav><div className="safe"><ShieldCheck /><div><b>Chế độ an toàn</b><small>Luôn duyệt trước khi đăng</small></div></div></aside>
+    <main><header><div><p>AI TECHFLOW STUDIO</p><h1>{meta[0]}</h1><span>{meta[1]}</span></div>{!['/calendar', '/campaigns'].includes(pathname) && <button className="primary" onClick={() => openTask()}><Plus />Tạo công việc</button>}</header>
+      {error && <div className="global-error">{error}</div>}
+      {loading && !tasks.length && <div className="global-error">Đang tải dữ liệu...</div>}
+      <Routes>
+        <Route path="/" element={<Overview tasks={tasks} stats={stats} actions={actions} openTask={() => openTask()} />} />
+        <Route path="/pipeline" element={<TaskBoard tasks={tasks} actions={actions} />} />
+        <Route path="/campaigns" element={<CampaignView campaigns={campaigns} tasks={tasks} actions={actions} openCampaign={() => setCampaignModal(true)} />} />
+        <Route path="/videos" element={<TaskBoard tasks={tasks} actions={actions} />} />
+        <Route path="/trends" element={<TrendsView onCreateTask={openTask} />} />
+        <Route path="/calendar" element={<CalendarView items={publications} actions={actions} openPublication={() => setPublicationModal(true)} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </main>
+    {taskModal && <TaskModal onClose={closeTask} onSave={actions.createTask} initialTopic={initialTopic} />}
+    {campaignModal && <CampaignModal onClose={() => setCampaignModal(false)} onSave={actions.createCampaign} />}
+    {publicationModal && <PublicationModal tasks={tasks} onClose={() => setPublicationModal(false)} onSave={actions.createPublication} />}
+  </div>;
 }
