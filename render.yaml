@@ -37,6 +37,10 @@ services:
         value: vi-VN-HoaiMyNeural
       - key: RESEARCH_ALLOWED_DOMAINS
         value: developers.openai.com,platform.openai.com,docs.python.org,docs.docker.com,developer.mozilla.org,docs.github.com,developers.tiktok.com
+      - key: TREND_FEEDS
+        value: https://github.blog/feed/
+      - key: TREND_ALLOWED_DOMAINS
+        value: developers.openai.com,docs.python.org,developers.tiktok.com,github.blog
       - key: OPENAI_API_KEY
         sync: false
       - key: CLOUDINARY_URL

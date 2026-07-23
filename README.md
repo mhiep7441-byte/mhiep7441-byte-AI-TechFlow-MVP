@@ -74,3 +74,10 @@ mvn test
 cd frontend
 npm run build
 ```
+
+### API xu hướng an toàn
+
+`GET /api/trends` đọc RSS/Atom từ các URL trong `TREND_FEEDS` (phân cách bằng dấu phẩy).
+Chỉ URL HTTPS có host trong `TREND_ALLOWED_DOMAINS` được truy cập; feed có timeout ngắn,
+giới hạn kích thước XML và chống external entity. Khi feed lỗi hoặc chưa cấu hình, API trả
+gợi ý cố định với `fallback: true`; các gợi ý này không được coi là tin mới đã xác minh.

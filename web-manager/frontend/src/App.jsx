@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import {
   CalendarDays, CheckCircle2, ChevronRight, CirclePlay, Clock3, LayoutDashboard,
   Clapperboard, Globe2, ListTodo, Plus, Search, ShieldCheck, Sparkles, Trash2,
-  UserRound, Video, WandSparkles, X,
+  RefreshCw, TrendingUp, UserRound, Video, WandSparkles, X,
 } from 'lucide-react';
 import { useTechFlowData } from './hooks/useTechFlowData';
 
@@ -24,6 +24,7 @@ const pageMeta = {
   '/': ['Tổng quan nội dung', 'Theo dõi toàn bộ quy trình sản xuất trong một nơi.'],
   '/pipeline': ['Video pipeline', 'Kiểm soát tiến độ từ ý tưởng đến bản nháp.'],
   '/videos': ['Thư viện video', 'Xem lại, duyệt và quản lý các bản nháp video.'],
+  '/trends': ['Xu hướng công nghệ', 'Nguồn ý tưởng được cập nhật để bạn kiểm chứng và sản xuất.'],
   '/calendar': ['Lịch nội dung', 'Lên lịch xuất bản sau khi video đã được duyệt.'],
 };
 
@@ -63,13 +64,56 @@ function Overview({ tasks, stats, actions, openTask }) {
   return <><section className="hero-card"><div className="hero-icon"><WandSparkles /></div><div><small>BẮT ĐẦU NHANH</small><h2>Tạo video công nghệ tiếp theo</h2><p>Nhập chủ đề, duyệt kịch bản và xuất video dọc 1080×1920.</p></div><button onClick={openTask}>Tạo nội dung <ChevronRight /></button></section><section className="stats"><div><span className="stat-icon blue"><ListTodo /></span><small>Tổng công việc</small><strong>{stats.total}</strong><em>Tất cả nội dung</em></div><div><span className="stat-icon cyan"><Clock3 /></span><small>Đang xử lý</small><strong>{stats.processing}</strong><em>Trong pipeline</em></div><div><span className="stat-icon amber"><Video /></span><small>Chờ duyệt</small><strong>{stats.reviewing}</strong><em>Cần bạn kiểm tra</em></div><div><span className="stat-icon green"><CheckCircle2 /></span><small>Hoàn tất</small><strong>{stats.completed}</strong><em>Sẵn sàng sử dụng</em></div></section><TaskBoard tasks={tasks} actions={actions} /></>;
 }
 
+function normalizeTrend(value, index) {
+  if (typeof value === 'string') return { id: `trend-${index}`, topic: value, title: value };
+  const topic = value?.topic || value?.query || value?.name || value?.title || value?.headline || '';
+  return {
+    id: value?.id || value?.slug || `trend-${index}`,
+    topic: String(topic).trim(),
+    title: String(value?.headline || value?.title || topic).trim(),
+    summary: value?.summary || value?.description || value?.reason || '',
+    source: value?.sourceUrl || value?.url || (String(value?.source || '').startsWith('http') ? value.source : ''),
+    score: value?.score ?? value?.relevance ?? value?.heat ?? null,
+    tags: Array.isArray(value?.tags) ? value.tags : [],
+  };
+}
+
+function TrendsView({ onCreateTask }) {
+  const [trends, setTrends] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [warnings, setWarnings] = useState([]);
+  const load = async () => {
+    setLoading(true); setError('');
+    try {
+      const response = await fetch('/api/trends');
+      if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+      const payload = await response.json();
+      const rows = Array.isArray(payload) ? payload : (payload?.trends || payload?.topics || payload?.items || payload?.results || payload?.data || []);
+      setWarnings(Array.isArray(payload?.warnings) ? payload.warnings.filter(Boolean) : []);
+      setTrends(rows.map(normalizeTrend).filter((trend) => trend.topic));
+    } catch (reason) {
+      setError(`Không thể tải xu hướng: ${reason.message}`);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+  return <section className="workspace trends-view">
+    <div className="section-head"><div><p>RESEARCH AGENT</p><h2>Ý tưởng đang được quan tâm</h2></div><button className="secondary-action" onClick={load} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} />Cập nhật</button></div>
+    {loading && <div className="trends-state"><div className="loader" /><p>Đang lấy xu hướng từ nguồn research...</p></div>}
+    {!loading && error && <div className="trends-state trends-error" role="alert"><TrendingUp /><h3>Chưa tải được xu hướng</h3><p>{error}</p><button className="primary" onClick={load}>Thử lại</button></div>}
+    {!loading && !error && !trends.length && <div className="trends-state"><TrendingUp /><h3>Chưa có xu hướng</h3><p>Research Agent chưa trả về dữ liệu. Bạn vẫn có thể tạo chủ đề thủ công.</p><button className="primary" onClick={() => onCreateTask('')}>Tạo công việc</button></div>}
+    {!loading && !error && warnings.length > 0 && <div className="trends-warning" role="status"><ShieldCheck /><span>{warnings[0]}</span></div>}
+    {!loading && !error && trends.length > 0 && <div className="trend-grid">{trends.map((trend) => <article className="trend-card" key={trend.id}><div className="trend-card-top"><span><TrendingUp />ĐỀ XUẤT</span>{trend.score !== null && <strong>{trend.score}</strong>}</div><h3>{trend.title || trend.topic}</h3>{trend.summary && <p>{trend.summary}</p>}<div className="trend-topic">{trend.topic}</div>{trend.tags.length > 0 && <div className="trend-tags">{trend.tags.slice(0, 4).map((tag) => <span key={tag}>#{String(tag).replace(/^#/, '')}</span>)}</div>}<div className="trend-card-foot">{trend.source ? <a href={trend.source} target="_blank" rel="noreferrer">Mở nguồn</a> : <span>Chưa có nguồn</span>}<button className="generate" onClick={() => onCreateTask(trend.topic)}><Plus />Tạo công việc</button></div></article>)}</div>}
+  </section>;
+}
+
 function CalendarView({ items, actions, openPublication }) {
   const grouped = useMemo(() => items.reduce((result, item) => { const day = item.scheduledAt ? item.scheduledAt.slice(0, 10) : 'Chưa lên ngày'; (result[day] ||= []).push(item); return result; }, {}), [items]);
   return <section className="workspace calendar-view"><div className="section-head"><div><p>LỊCH XUẤT BẢN</p><h2>Kế hoạch nội dung</h2></div><button className="primary" onClick={openPublication}><Plus />Thêm lịch đăng</button></div><div className="calendar-list">{Object.entries(grouped).map(([day, rows]) => <div className="calendar-day" key={day}><div className="date-box"><CalendarDays /><b>{day}</b><small>{rows.length} nội dung</small></div><div className="schedule-items">{rows.map((item) => <article className="schedule-card" key={item.id}><div><span className={`platform ${item.platform}`}>{item.platform}</span><h3>{item.taskTitle}</h3><p>{item.note || 'Không có ghi chú'}</p></div><div className="schedule-meta"><span className={`publication-status ${item.status}`}>{publicationLabels[item.status]}</span><time>{item.scheduledAt ? item.scheduledAt.slice(11, 16) : '--:--'}</time><button className="icon" onClick={() => window.confirm('Xóa lịch đăng này?') && actions.deletePublication(item.id)}><Trash2 /></button></div></article>)}</div></div>)}{!items.length && <div className="big-empty"><CalendarDays /><h3>Chưa có lịch xuất bản</h3><p>Thêm lịch đăng sau khi video đã được bạn duyệt.</p><button className="primary" onClick={openPublication}><Plus />Tạo lịch đầu tiên</button></div>}</div></section>;
 }
 
-function TaskModal({ onClose, onSave }) {
-  const [form, setForm] = useState(emptyTask);
+function TaskModal({ onClose, onSave, initialTopic = '' }) {
+  const [form, setForm] = useState(() => ({ ...emptyTask, topic: initialTopic }));
   const [validationError, setValidationError] = useState('');
   const submit = async (event) => {
     event.preventDefault();
@@ -106,7 +150,11 @@ export default function App() {
   const { pathname } = useLocation();
   const { tasks, publications, loading, error, stats, actions } = useTechFlowData();
   const [taskModal, setTaskModal] = useState(false);
+  const [initialTopic, setInitialTopic] = useState('');
   const [publicationModal, setPublicationModal] = useState(false);
+  const openTask = (topic = '') => { setInitialTopic(topic); setTaskModal(true); };
+  const closeTask = () => { setTaskModal(false); setInitialTopic(''); };
   const meta = pageMeta[pathname] || pageMeta['/'];
+  if (pathname === '/trends') return <div className="shell"><aside><div className="brand"><span><Sparkles /></span><div>TechFlow<small>AI CONTENT STUDIO</small></div></div><nav><NavLink to="/" end><LayoutDashboard />Tổng quan</NavLink><NavLink to="/pipeline"><CirclePlay />Video pipeline</NavLink><NavLink to="/videos"><Video />Thư viện video</NavLink><NavLink to="/trends"><TrendingUp />Xu hướng</NavLink><NavLink to="/calendar"><CalendarDays />Lịch nội dung</NavLink></nav><div className="safe"><ShieldCheck /><div><b>Chế độ an toàn</b><small>Luôn duyệt trước khi đăng</small></div></div></aside><main><header><div><p>AI TECHFLOW STUDIO</p><h1>{meta[0]}</h1><span>{meta[1]}</span></div><button className="primary" onClick={() => openTask()}><Plus />Tạo công việc</button></header><TrendsView onCreateTask={openTask} />{taskModal && <TaskModal onClose={closeTask} onSave={actions.createTask} initialTopic={initialTopic} />}</main></div>;
   return <div className="shell"><aside><div className="brand"><span><Sparkles /></span><div>TechFlow<small>AI CONTENT STUDIO</small></div></div><nav><NavLink to="/" end><LayoutDashboard />Tổng quan</NavLink><NavLink to="/pipeline"><CirclePlay />Video pipeline</NavLink><NavLink to="/videos"><Video />Thư viện video</NavLink><NavLink to="/calendar"><CalendarDays />Lịch nội dung</NavLink></nav><div className="safe"><ShieldCheck /><div><b>Chế độ an toàn</b><small>Luôn duyệt trước khi đăng</small></div></div></aside><main><header><div><p>AI TECHFLOW STUDIO</p><h1>{meta[0]}</h1><span>{meta[1]}</span></div>{pathname !== '/calendar' && <button className="primary" onClick={() => setTaskModal(true)}><Plus />Tạo công việc</button>}</header>{error && <div className="global-error">{error}</div>}{loading && !tasks.length && <div className="global-error">Đang tải dữ liệu...</div>}<Routes><Route path="/" element={<Overview tasks={tasks} stats={stats} actions={actions} openTask={() => setTaskModal(true)} />} /><Route path="/pipeline" element={<TaskBoard tasks={tasks} actions={actions} />} /><Route path="/videos" element={<TaskBoard tasks={tasks} actions={actions} />} /><Route path="/calendar" element={<CalendarView items={publications} actions={actions} openPublication={() => setPublicationModal(true)} />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></main>{taskModal && <TaskModal onClose={() => setTaskModal(false)} onSave={actions.createTask} />}{publicationModal && <PublicationModal tasks={tasks} onClose={() => setPublicationModal(false)} onSave={actions.createPublication} />}</div>;
 }
