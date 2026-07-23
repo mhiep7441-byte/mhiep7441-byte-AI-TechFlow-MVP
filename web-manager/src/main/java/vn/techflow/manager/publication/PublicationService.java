@@ -44,12 +44,6 @@ public class PublicationService {
                     HttpStatus.CONFLICT,
                     "Chỉ được lên lịch/xuất bản sau khi video đã được duyệt (DONE)");
         }
-        if ((item.getStatus() == PublicationStatus.READY || item.getStatus() == PublicationStatus.PUBLISHED)
-                && (item.getTask().getOutputPath() == null || item.getTask().getOutputPath().isBlank())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Video đã duyệt nhưng chưa có file MP4 để xuất bản");
-        }
         item.setScheduledAt(request.scheduledAt());
         item.setExternalId(request.externalId());
         item.setNote(request.note() == null ? "" : request.note().trim());
