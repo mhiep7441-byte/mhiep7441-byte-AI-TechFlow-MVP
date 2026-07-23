@@ -89,6 +89,35 @@ class VideoPlan:
     disclaimer: str = "Kiểm tra nguồn và duyệt nội dung trước khi đăng."
 
 
+@dataclass
+class QualityReport:
+    score: int
+    status: str
+    checks: list[dict[str, Any]] = field(default_factory=list)
+    blocking_issues: list[str] = field(default_factory=list)
+
+
+def assess_quality(plan: VideoPlan) -> QualityReport:
+    """Run deterministic checks before a draft can reach a human reviewer."""
+    checks: list[dict[str, Any]] = []
+
+    def check(code: str, label: str, passed: bool, blocking: bool = True) -> None:
+        checks.append({"code": code, "label": label, "passed": passed, "blocking": blocking})
+
+    check("scene_count", "Có từ 4 đến 6 cảnh", 4 <= len(plan.scenes) <= MAX_SCENES)
+    narration_length = sum(len(scene.narration.strip()) for scene in plan.scenes)
+    check("narration", "Lời thoại đủ dài cho video ngắn", 220 <= narration_length <= 5_400)
+    check("visuals", "Mỗi cảnh có minh họa và hành động nhân vật", all(scene.visual_prompt.strip() and scene.character_action.strip() for scene in plan.scenes))
+    check("caption", "Caption không rỗng và không vượt giới hạn", 1 <= len(plan.caption.strip()) <= 2_200)
+    check("hashtags", "Có hashtag hợp lệ", 2 <= len(plan.hashtags) <= 8 and all(item.startswith("#") for item in plan.hashtags), False)
+    check("sources", "Có ít nhất một nguồn để đối chiếu", bool(plan.sources), True)
+
+    blocking_issues = [item["label"] for item in checks if item["blocking"] and not item["passed"]]
+    score = round(100 * sum(1 for item in checks if item["passed"]) / len(checks)) if checks else 0
+    status = "PASS" if not blocking_issues else "NEEDS_REVIEW"
+    return QualityReport(score, status, checks, blocking_issues)
+
+
 class _VisibleTextParser(HTMLParser):
     """Small dependency-free HTML-to-text parser used for source excerpts."""
 
@@ -432,9 +461,14 @@ def run(topic: str, upload: bool = True, source_urls: list[str] | None = None, v
     job_dir.mkdir(parents=True, exist_ok=True)
     research = research_topic(topic, source_urls)
     plan = generate_plan(topic, research, visual_style, character_description)
+    quality = assess_quality(plan)
     (job_dir / "script.json").write_text(json.dumps(asdict(plan), ensure_ascii=False, indent=2), encoding="utf-8")
     (job_dir / "research.json").write_text(json.dumps(asdict(research), ensure_ascii=False, indent=2), encoding="utf-8")
-    (job_dir / "metadata.json").write_text(json.dumps({"status": "DRAFT_REQUIRES_REVIEW", "topic": topic, "caption": plan.caption, "hashtags": plan.hashtags, "sources": [asdict(source) for source in plan.sources]}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (job_dir / "quality.json").write_text(json.dumps(asdict(quality), ensure_ascii=False, indent=2), encoding="utf-8")
+    (job_dir / "metadata.json").write_text(json.dumps({"status": "DRAFT_REQUIRES_REVIEW", "topic": topic, "caption": plan.caption, "hashtags": plan.hashtags, "sources": [asdict(source) for source in plan.sources], "quality": asdict(quality)}, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"QUALITY_SCORE={quality.score}", flush=True)
+    print(f"QUALITY_STATUS={quality.status}", flush=True)
+    print(f"QUALITY_REPORT={json.dumps(asdict(quality), ensure_ascii=True, separators=(',', ':'))}", flush=True)
     video = create_video(plan, job_dir)
     if not upload:
         return str(video)

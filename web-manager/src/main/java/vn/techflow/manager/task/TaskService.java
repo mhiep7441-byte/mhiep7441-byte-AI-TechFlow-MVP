@@ -101,6 +101,9 @@ public class TaskService {
         task.setStatus(TaskStatus.GENERATING);
         task.setErrorMessage(null);
         task.setOutputPath(null);
+        task.setQualityScore(null);
+        task.setQualityStatus("NEEDS_REVIEW");
+        task.setQualityReport("");
         repository.save(task);
         try {
             List<String> command = new ArrayList<>(List.of(pythonCommand, workerScript, "--topic", task.getTopic()));
@@ -127,6 +130,9 @@ public class TaskService {
                 throw new IOException("Worker không trả về URL video.");
             }
             task.setOutputPath(output.substring(marker + 12).trim());
+            task.setQualityScore(parseQualityScore(marker(output, "QUALITY_SCORE=")));
+            task.setQualityStatus(defaultValue(marker(output, "QUALITY_STATUS="), "NEEDS_REVIEW"));
+            task.setQualityReport(defaultValue(marker(output, "QUALITY_REPORT="), "{}"));
             task.setStatus(TaskStatus.DRAFT_REQUIRES_REVIEW);
         } catch (Exception exception) {
             if (exception instanceof InterruptedException) {
@@ -137,6 +143,27 @@ public class TaskService {
         }
         repository.save(task);
         return CompletableFuture.completedFuture(null);
+    }
+
+    private static String marker(String output, String name) {
+        int start = output.lastIndexOf(name);
+        if (start < 0) return "";
+        start += name.length();
+        int end = output.indexOf('\n', start);
+        return (end < 0 ? output.substring(start) : output.substring(start, end)).trim();
+    }
+
+    private static Integer parseQualityScore(String value) {
+        try {
+            if (value.isBlank()) return null;
+            return Math.max(0, Math.min(100, Integer.parseInt(value)));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static String defaultValue(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.substring(0, Math.min(value.length(), 8000));
     }
 
     private static String tail(String value, int limit) {

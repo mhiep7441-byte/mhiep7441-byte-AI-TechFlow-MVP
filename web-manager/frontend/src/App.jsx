@@ -44,7 +44,8 @@ function TaskCard({ task, actions }) {
     {task.errorMessage && <div className="error">{task.errorMessage}</div>}
     {task.outputPath && <div className="video-result">
       <div className="preview-head"><span><Video />BẢN XEM TRƯỚC</span><strong>{needsReview ? 'CẦN DUYỆT' : labels[task.status]}</strong></div>
-      <video controls preload="metadata" src={task.outputPath} />
+       {task.qualityScore != null && <div className={`quality-badge ${task.qualityStatus === 'PASS' ? 'pass' : 'needs-review'}`} role="status"><ShieldCheck />Quality Gate: {task.qualityScore}/100 · {task.qualityStatus === 'PASS' ? 'Đạt' : 'Cần kiểm tra'}</div>}
+       <video controls preload="metadata" src={task.outputPath} />
       <a href={task.outputPath} target="_blank" rel="noreferrer"><CirclePlay />Xem hoặc tải video</a>
     </div>}
     {needsReview && <div className="review-notice" role="status"><ShieldCheck /><span><b>Bản nháp an toàn</b><small>Kiểm tra cảnh, nhân vật, phụ đề và nguồn trước khi xuất bản.</small></span></div>}

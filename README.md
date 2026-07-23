@@ -75,6 +75,12 @@ cd frontend
 npm run build
 ```
 
+## Quality Gate
+
+Worker tạo thêm `quality.json` với điểm 0–100 và các kiểm tra về số cảnh, lời
+thoại, minh họa nhân vật, caption, hashtag và nguồn. Điểm chỉ là tín hiệu hỗ trợ;
+video vẫn phải ở `DRAFT_REQUIRES_REVIEW` và cần người dùng duyệt trước khi lên lịch.
+
 ### API xu hướng an toàn
 
 `GET /api/trends` đọc RSS/Atom từ các URL trong `TREND_FEEDS` (phân cách bằng dấu phẩy).

@@ -35,6 +35,20 @@ class VideoWorkerSafetyTests(unittest.TestCase):
         self.assertEqual(plan.research_status, "NEEDS_REVIEW")
         self.assertTrue(plan.disclaimer.strip())
 
+    def test_quality_gate_flags_missing_sources(self):
+        plan = video_worker.generate_plan("Unknown topic", video_worker.ResearchBrief("Unknown topic"))
+        report = video_worker.assess_quality(plan)
+        self.assertEqual(report.status, "NEEDS_REVIEW")
+        self.assertIn("Có ít nhất một nguồn để đối chiếu", report.blocking_issues)
+        self.assertLess(report.score, 100)
+
+    def test_quality_gate_passes_with_sources_and_complete_plan(self):
+        research = video_worker.ResearchBrief("Python", [video_worker.Source("Python docs", "https://docs.python.org/3/")])
+        plan = video_worker.generate_plan("Python", research)
+        report = video_worker.assess_quality(plan)
+        self.assertEqual(report.status, "PASS")
+        self.assertEqual(report.score, 100)
+
 
 if __name__ == "__main__":
     unittest.main()

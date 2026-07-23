@@ -13,6 +13,9 @@ public class WorkTask {
  @Column(length=240) private String visualStyle="";
  @Column(length=240) private String characterDescription="";
  @Column(length=1000) private String researchSources="";
+ @Column private Integer qualityScore;
+ @Column(length=30) private String qualityStatus="NEEDS_REVIEW";
+ @Column(length=8000) private String qualityReport="";
  @Column(length=1000) private String outputPath; @Column(length=4000) private String errorMessage;
  @Column(nullable=false,updatable=false) private LocalDateTime createdAt; @Column(nullable=false) private LocalDateTime updatedAt;
  @PrePersist void create(){createdAt=updatedAt=LocalDateTime.now();} @PreUpdate void update(){updatedAt=LocalDateTime.now();}
@@ -23,5 +26,8 @@ public class WorkTask {
  public String getVisualStyle(){return visualStyle;} public void setVisualStyle(String v){visualStyle=v;}
  public String getCharacterDescription(){return characterDescription;} public void setCharacterDescription(String v){characterDescription=v;}
  public String getResearchSources(){return researchSources;} public void setResearchSources(String v){researchSources=v;}
+ public Integer getQualityScore(){return qualityScore;} public void setQualityScore(Integer v){qualityScore=v;}
+ public String getQualityStatus(){return qualityStatus;} public void setQualityStatus(String v){qualityStatus=v;}
+ public String getQualityReport(){return qualityReport;} public void setQualityReport(String v){qualityReport=v;}
  public String getErrorMessage(){return errorMessage;} public void setErrorMessage(String v){errorMessage=v;} public LocalDateTime getCreatedAt(){return createdAt;} public LocalDateTime getUpdatedAt(){return updatedAt;}
 }
