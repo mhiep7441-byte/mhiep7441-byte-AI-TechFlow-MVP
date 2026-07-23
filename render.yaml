@@ -54,7 +54,7 @@ services:
       - key: ENABLE_AI_IMAGES
         value: "true"
       - key: MAX_AI_IMAGES
-        value: "4"
+        value: "6"
       - key: CLOUDINARY_URL
         sync: false
       - key: TIKTOK_CLIENT_KEY
@@ -63,6 +63,12 @@ services:
         sync: false
       - key: TIKTOK_REDIRECT_URI
         value: https://ai-techflow-studio.onrender.com/oauth/tiktok/callback
+      - key: YOUTUBE_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_REDIRECT_URI
+        value: https://ai-techflow-studio.onrender.com/oauth/youtube/callback
       - key: TECHFLOW_TOKEN_ENCRYPTION_KEY
         sync: false
       - key: SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID

@@ -1,5 +1,7 @@
 package vn.techflow.manager.campaign;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -11,8 +13,12 @@ import org.springframework.web.server.ResponseStatusException;
 import vn.techflow.manager.auth.AppUser;
 import vn.techflow.manager.auth.AuthService;
 import vn.techflow.manager.auth.UserRole;
-import vn.techflow.manager.task.*;
+import vn.techflow.manager.task.Priority;
+import vn.techflow.manager.task.TaskRepository;
+import vn.techflow.manager.task.TaskStatus;
+import vn.techflow.manager.task.WorkTask;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,11 +38,16 @@ public class CampaignService {
     private final CampaignRepository campaigns;
     private final TaskRepository tasks;
     private final AuthService authService;
+    private final SeriesPlannerService planner;
+    private final ObjectMapper json;
 
-    public CampaignService(CampaignRepository campaigns, TaskRepository tasks, AuthService authService) {
+    public CampaignService(CampaignRepository campaigns, TaskRepository tasks, AuthService authService,
+                           SeriesPlannerService planner, ObjectMapper json) {
         this.campaigns = campaigns;
         this.tasks = tasks;
         this.authService = authService;
+        this.planner = planner;
+        this.json = json;
     }
 
     @Transactional(readOnly = true)
@@ -64,20 +75,70 @@ public class CampaignService {
     }
 
     @Transactional
-    public List<WorkTask> createEpisodes(Long id, Authentication authentication) {
+    public Campaign planSeries(Long id, Authentication authentication) {
         Campaign campaign = accessible(id, authentication);
+        JsonNode plan = planner.plan(campaign);
+        campaign.setSeriesPlanJson(plan.toString());
+        return campaigns.save(campaign);
+    }
+
+    @Transactional
+    public List<WorkTask> createEpisodes(Long id, Authentication authentication) {
+        return createEpisodes(accessible(id, authentication));
+    }
+
+    @Transactional
+    public WorkTask prepareNext(Long id, Authentication authentication) {
+        return claimNext(accessible(id, authentication), LocalDateTime.now());
+    }
+
+    @Transactional
+    public List<Long> claimDueBatch(LocalDateTime now, int limit) {
+        List<Long> taskIds = new ArrayList<>();
+        PageRequest batch = PageRequest.of(0, Math.min(Math.max(limit, 1), 10));
+        for (Campaign campaign : campaigns.findDue(now, batch)) {
+            try {
+                taskIds.add(claimNext(campaign, now).getId());
+            } catch (ResponseStatusException exception) {
+                if (exception.getStatusCode() != HttpStatus.CONFLICT) throw exception;
+            }
+        }
+        return taskIds;
+    }
+
+    @Transactional
+    public void delete(Long id, Authentication authentication) {
+        campaigns.delete(accessible(id, authentication));
+    }
+
+    private List<WorkTask> createEpisodes(Campaign campaign) {
+        Long id = campaign.getId();
         List<WorkTask> existing = tasks.findByCampaignIdOrderByEpisodeNumberAsc(id);
         if (!existing.isEmpty()) return existing;
 
+        JsonNode plannedEpisodes = readPlan(campaign).path("episodes");
         List<WorkTask> episodes = new ArrayList<>();
         for (int number = 1; number <= campaign.getEpisodeCount(); number++) {
             String angle = ANGLES.get((number - 1) % ANGLES.size());
+            JsonNode planned = plannedEpisodes.isArray() && plannedEpisodes.size() >= number
+                    ? plannedEpisodes.get(number - 1) : json.createObjectNode();
+            String plannedTitle = planned.path("title").asText("").trim();
+            String synopsis = planned.path("synopsis").asText(angle).trim();
+            String objective = planned.path("learning_objective").asText("").trim();
+            String guardrails = planned.path("factual_guardrails").isArray()
+                    ? planned.path("factual_guardrails").toString() : "[]";
+
             WorkTask task = new WorkTask();
             task.setOwner(campaign.getOwner());
-            task.setTitle(limit(campaign.getName() + " — Tập " + number, 160));
+            task.setTitle(limit(plannedTitle.isBlank()
+                    ? campaign.getName() + " — Tập " + number
+                    : campaign.getName() + " — " + plannedTitle, 160));
             task.setTopic(limit(campaign.getTheme() + ". Tập " + number + "/" + campaign.getEpisodeCount()
-                    + " tập trung vào: " + angle + ". Không lặp lại nội dung của tập khác.", 500));
-            task.setDescription(campaign.getDescription());
+                    + ": " + synopsis + ". Mục tiêu: " + objective
+                    + ". Ràng buộc kiểm chứng: " + guardrails
+                    + ". Không lặp lại nội dung của tập khác.", 500));
+            task.setDescription(limit(campaign.getDescription()
+                    + (objective.isBlank() ? "" : "\nMục tiêu: " + objective), 2000));
             task.setCampaignId(id);
             task.setEpisodeNumber(number);
             task.setTargetDurationSeconds(campaign.getTargetDurationSeconds());
@@ -93,9 +154,28 @@ public class CampaignService {
         return tasks.findByCampaignIdOrderByEpisodeNumberAsc(id);
     }
 
-    @Transactional
-    public void delete(Long id, Authentication authentication) {
-        campaigns.delete(accessible(id, authentication));
+    private WorkTask claimNext(Campaign campaign, LocalDateTime now) {
+        if (tasks.findByCampaignIdOrderByEpisodeNumberAsc(campaign.getId()).isEmpty()) {
+            createEpisodes(campaign);
+        }
+        WorkTask task = tasks.findFirstByCampaignIdAndStatusOrderByEpisodeNumberAsc(
+                campaign.getId(), TaskStatus.TODO).orElseThrow(() -> {
+            campaign.setStatus(CampaignStatus.COMPLETED);
+            campaign.setProductionEnabled(false);
+            campaign.setNextRunAt(null);
+            campaigns.save(campaign);
+            return new ResponseStatusException(HttpStatus.CONFLICT, "Campaign không còn tập chờ sản xuất");
+        });
+        task.setStatus(TaskStatus.GENERATING);
+        task.setErrorMessage(null);
+        tasks.save(task);
+
+        campaign.setStatus(CampaignStatus.ACTIVE);
+        campaign.setLastRunAt(now);
+        campaign.setNextRunAt(nextRun(campaign.getCadence(), now));
+        if (campaign.getCadence() == CampaignCadence.MANUAL) campaign.setProductionEnabled(false);
+        campaigns.save(campaign);
+        return task;
     }
 
     private Campaign accessible(Long id, Authentication authentication) {
@@ -116,7 +196,32 @@ public class CampaignService {
         campaign.setTargetDurationSeconds(request.targetDurationSeconds() == null ? 60 : request.targetDurationSeconds());
         campaign.setVisualStyle(clean(request.visualStyle()));
         campaign.setCharacterDescription(clean(request.characterDescription()));
+        campaign.setAudience(clean(request.audience()));
+        campaign.setCadence(request.cadence() == null ? CampaignCadence.MANUAL : request.cadence());
+        campaign.setProductionEnabled(Boolean.TRUE.equals(request.productionEnabled())
+                && campaign.getCadence() != CampaignCadence.MANUAL);
+        campaign.setNextRunAt(campaign.isProductionEnabled()
+                ? (request.nextRunAt() == null ? LocalDateTime.now() : request.nextRunAt()) : null);
         campaign.setStatus(request.status() == null ? CampaignStatus.PLANNING : request.status());
+    }
+
+    private JsonNode readPlan(Campaign campaign) {
+        try {
+            if (campaign.getSeriesPlanJson() == null || campaign.getSeriesPlanJson().isBlank()) {
+                return json.createObjectNode();
+            }
+            return json.readTree(campaign.getSeriesPlanJson());
+        } catch (Exception exception) {
+            return json.createObjectNode();
+        }
+    }
+
+    private static LocalDateTime nextRun(CampaignCadence cadence, LocalDateTime from) {
+        return switch (cadence) {
+            case HOURLY -> from.plusHours(1);
+            case DAILY -> from.plusDays(1);
+            case MANUAL -> null;
+        };
     }
 
     private static String clean(String value) { return value == null ? "" : value.trim(); }

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from research_agent import ResearchBrief, research_topic
+from content_guard import assess_content
 
 WIDTH = max(360, int(os.getenv("VIDEO_WIDTH", "540")))
 HEIGHT = max(640, int(os.getenv("VIDEO_HEIGHT", "960")))
@@ -614,6 +615,14 @@ def create_video(plan: VideoPlan, job_dir: Path) -> tuple[Path, float]:
 def quality_control(plan: VideoPlan, research: ResearchBrief, fact_check: FactCheck, duration: float) -> dict[str, Any]:
     score = 100
     issues = list(fact_check.issues)
+    guard = assess_content(
+        [asdict(scene) for scene in plan.scenes],
+        research.to_dict(),
+        plan.target_duration_seconds,
+    )
+    score -= guard["penalty"]
+    issues.extend(guard["issues"])
+    issues.extend(guard["blocking_issues"])
     tolerance = max(12, plan.target_duration_seconds * 0.35)
     if abs(duration - plan.target_duration_seconds) > tolerance:
         score -= 15
@@ -636,13 +645,14 @@ def quality_control(plan: VideoPlan, research: ResearchBrief, fact_check: FactCh
     return {
         "score": max(0, score),
         "issues": issues,
-        "ready_for_review": score >= 70,
+        "ready_for_review": score >= 70 and guard["passed"],
         "duration_seconds": round(duration, 2),
         "scene_count": len(plan.scenes),
         "source_count": len(research.sources),
         "ai_images_enabled": bool(os.getenv("OPENAI_API_KEY")) and ENABLE_AI_IMAGES,
         "script_provider": plan.provider,
         "target_duration_seconds": plan.target_duration_seconds,
+        "content_guard": guard,
     }
 
 

@@ -1,5 +1,11 @@
 # AI TechFlow Studio
 
+## Tài liệu hệ thống
+
+- [Kiến trúc, data model và pipeline](docs/ARCHITECTURE.md)
+- [User flow, role và acceptance criteria](docs/USER-FLOWS.md)
+- [Vận hành, YouTube OAuth và production QA](docs/OPERATIONS.md)
+
 Ứng dụng quản lý quy trình tạo video công nghệ, từ ý tưởng đến lịch xuất bản.
 
 ## Kiến trúc

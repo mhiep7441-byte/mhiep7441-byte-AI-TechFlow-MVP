@@ -25,6 +25,16 @@ public class Campaign {
     private String visualStyle = "";
     @Column(nullable = false, length = 240)
     private String characterDescription = "";
+    @Column(nullable = false, length = 160)
+    private String audience = "";
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
+    private CampaignCadence cadence = CampaignCadence.MANUAL;
+    @Column(nullable = false)
+    private boolean productionEnabled;
+    private LocalDateTime nextRunAt;
+    private LocalDateTime lastRunAt;
+    @Column(columnDefinition = "TEXT")
+    private String seriesPlanJson = "";
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
     private CampaignStatus status = CampaignStatus.PLANNING;
     @JsonIgnore @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -53,6 +63,18 @@ public class Campaign {
     public void setVisualStyle(String visualStyle) { this.visualStyle = visualStyle; }
     public String getCharacterDescription() { return characterDescription; }
     public void setCharacterDescription(String characterDescription) { this.characterDescription = characterDescription; }
+    public String getAudience() { return audience; }
+    public void setAudience(String audience) { this.audience = audience; }
+    public CampaignCadence getCadence() { return cadence; }
+    public void setCadence(CampaignCadence cadence) { this.cadence = cadence; }
+    public boolean isProductionEnabled() { return productionEnabled; }
+    public void setProductionEnabled(boolean productionEnabled) { this.productionEnabled = productionEnabled; }
+    public LocalDateTime getNextRunAt() { return nextRunAt; }
+    public void setNextRunAt(LocalDateTime nextRunAt) { this.nextRunAt = nextRunAt; }
+    public LocalDateTime getLastRunAt() { return lastRunAt; }
+    public void setLastRunAt(LocalDateTime lastRunAt) { this.lastRunAt = lastRunAt; }
+    public String getSeriesPlanJson() { return seriesPlanJson; }
+    public void setSeriesPlanJson(String seriesPlanJson) { this.seriesPlanJson = seriesPlanJson; }
     public CampaignStatus getStatus() { return status; }
     public void setStatus(CampaignStatus status) { this.status = status; }
     public AppUser getOwner() { return owner; }

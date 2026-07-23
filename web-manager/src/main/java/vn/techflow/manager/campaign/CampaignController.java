@@ -16,8 +16,12 @@ import java.util.List;
 @RequestMapping("/api/campaigns")
 public class CampaignController {
     private final CampaignService service;
+    private final vn.techflow.manager.task.TaskService taskService;
 
-    public CampaignController(CampaignService service) { this.service = service; }
+    public CampaignController(CampaignService service, vn.techflow.manager.task.TaskService taskService) {
+        this.service = service;
+        this.taskService = taskService;
+    }
 
     @Operation(summary = "Danh sách campaign có phân trang và phân quyền")
     @GetMapping
@@ -47,6 +51,21 @@ public class CampaignController {
     @PostMapping("/{id}/episodes")
     public List<WorkTask> createEpisodes(@PathVariable Long id, Authentication authentication) {
         return service.createEpisodes(id, authentication);
+    }
+
+    @Operation(summary = "Dùng AI tạo series bible và kế hoạch chi tiết cho từng tập")
+    @PostMapping("/{id}/plan")
+    public Campaign plan(@PathVariable Long id, Authentication authentication) {
+        return service.planSeries(id, authentication);
+    }
+
+    @Operation(summary = "Sản xuất tập TODO kế tiếp thành bản nháp cần duyệt")
+    @PostMapping("/{id}/produce-next")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public WorkTask produceNext(@PathVariable Long id, Authentication authentication) {
+        WorkTask task = service.prepareNext(id, authentication);
+        taskService.generate(task.getId());
+        return task;
     }
 
     @Operation(summary = "Xóa campaign, giữ lại video đã tạo")

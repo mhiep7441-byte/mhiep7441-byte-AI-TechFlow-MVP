@@ -10,5 +10,9 @@ public record CampaignRequest(
         @Min(30) @Max(600) Integer targetDurationSeconds,
         @Size(max = 240) String visualStyle,
         @Size(max = 240) String characterDescription,
+        @Size(max = 160) String audience,
+        CampaignCadence cadence,
+        Boolean productionEnabled,
+        java.time.LocalDateTime nextRunAt,
         CampaignStatus status
 ) {}

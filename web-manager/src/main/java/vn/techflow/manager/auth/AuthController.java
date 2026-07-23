@@ -60,6 +60,12 @@ public class AuthController {
         return AuthResponse.from(authService.current(authentication), csrfToken.getToken());
     }
 
+    @PutMapping("/profile")
+    public AuthResponse updateProfile(@Valid @RequestBody ProfileUpdateRequest request,
+                                      Authentication authentication, CsrfToken csrfToken) {
+        return AuthResponse.from(authService.updateProfile(authentication, request), csrfToken.getToken());
+    }
+
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(HttpServletRequest request) {

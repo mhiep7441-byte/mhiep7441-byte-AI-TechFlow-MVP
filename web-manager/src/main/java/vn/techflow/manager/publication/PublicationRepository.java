@@ -28,4 +28,5 @@ public interface PublicationRepository extends JpaRepository<Publication, Long> 
 
     @Query("select count(p) from Publication p join p.task t where (:ownerId is null or t.owner.id = :ownerId)")
     long countVisible(Long ownerId);
+    long countByStatus(PublicationStatus status);
 }

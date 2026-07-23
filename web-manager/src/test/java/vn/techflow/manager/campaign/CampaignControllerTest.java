@@ -49,12 +49,17 @@ class CampaignControllerTest {
                                   "episodeCount":3,
                                   "targetDurationSeconds":180,
                                   "visualStyle":"Editorial motion",
-                                  "characterDescription":"Host nữ kỹ sư AI"
+                                  "characterDescription":"Host nữ kỹ sư AI",
+                                  "audience":"Người mới học AI",
+                                  "cadence":"DAILY",
+                                  "productionEnabled":true
                                 }
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.ownerName").value("Series Creator"))
                 .andExpect(jsonPath("$.targetDurationSeconds").value(180))
+                .andExpect(jsonPath("$.cadence").value("DAILY"))
+                .andExpect(jsonPath("$.productionEnabled").value(true))
                 .andReturn().getResponse().getContentAsString();
 
         long id = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).path("id").asLong();

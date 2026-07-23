@@ -9,6 +9,7 @@ import {
 import { api } from './api';
 import { useAuth } from './AuthContext';
 import { evidenceSummary } from './utils';
+import { AdminDashboardPage, ProfilePage, UserHomePage, YouTubePublishModal } from './WorkspacePages';
 
 const taskDefaults = {
   title: '', description: '', topic: '', caption: '', hashtags: '',
@@ -17,7 +18,8 @@ const taskDefaults = {
 };
 const campaignDefaults = {
   name: '', theme: '', description: '', episodeCount: 5, targetDurationSeconds: 60,
-  visualStyle: '', characterDescription: '', status: 'PLANNING',
+  visualStyle: '', characterDescription: '', audience: '', cadence: 'MANUAL',
+  productionEnabled: false, nextRunAt: '', status: 'PLANNING',
 };
 const statusLabels = {
   TODO: 'Ý tưởng', IN_PROGRESS: 'Đang làm', GENERATING: 'Đang dựng',
@@ -108,18 +110,21 @@ function AppShell() {
     : pathname.startsWith('/videos') ? 'Thư viện video'
       : pathname.startsWith('/campaigns') ? 'Campaign & Series'
       : pathname.startsWith('/calendar') ? 'Lịch nội dung'
-        : pathname.startsWith('/admin') ? 'Quản trị người dùng' : 'Tổng quan';
+        : pathname.startsWith('/profile') ? 'Hồ sơ người dùng'
+          : pathname === '/admin' ? 'Admin Dashboard'
+            : pathname.startsWith('/admin') ? 'Quản trị người dùng' : 'Workspace của tôi';
   const doLogout = async () => { await logout(); navigate('/login'); };
   const close = () => setMobileOpen(false);
   return <div className="app-shell">
     <aside className={mobileOpen ? 'sidebar open' : 'sidebar'}>
       <Link className="brand" to="/" onClick={close}><span>TF</span><div>TechFlow<small>CONTENT STUDIO</small></div></Link>
       <nav>
-        <NavLink to="/" end onClick={close}><LayoutDashboard /> Tổng quan</NavLink>
+        <NavLink to="/" end onClick={close}><LayoutDashboard /> Workspace</NavLink>
         <NavLink to="/videos" onClick={close}><Film /> Video Studio</NavLink>
         <NavLink to="/campaigns" onClick={close}><Layers3 /> Campaign & Series</NavLink>
         <NavLink to="/calendar" onClick={close}><CalendarDays /> Lịch nội dung</NavLink>
-        {user.role === 'ADMIN' && <NavLink to="/admin/users" onClick={close}><UsersRound /> Người dùng</NavLink>}
+        <NavLink to="/profile" onClick={close}><UserRound /> Hồ sơ & kết nối</NavLink>
+        {user.role === 'ADMIN' && <><div className="nav-section-label">ADMIN</div><NavLink to="/admin" end onClick={close}><Gauge /> Dashboard hệ thống</NavLink><NavLink to="/admin/users" onClick={close}><UsersRound /> Người dùng</NavLink></>}
       </nav>
       <div className="sidebar-note"><ShieldCheck /><div><b>Review-first</b><span>Không đăng khi chưa duyệt.</span></div></div>
       <div className="sidebar-user"><div className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</div><div><b>{user.displayName}</b><span>{user.role}</span></div><button onClick={doLogout} aria-label="Đăng xuất"><LogOut /></button></div>
@@ -223,10 +228,13 @@ function VideoStudioPage() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [tiktok, setTikTok] = useState(null);
+  const [youtube, setYoutube] = useState(null);
   const [showPublish, setShowPublish] = useState(false);
+  const [showYoutubePublish, setShowYoutubePublish] = useState(false);
   const load = useCallback(() => api(`/api/tasks/${id}`).then((row) => { setTask(row); setForm({ ...taskDefaults, ...row, dueDate: row.dueDate || '' }); }).catch((reason) => setError(reason.message)), [id]);
   useEffect(() => { load(); const timer = window.setInterval(() => { if (task?.status === 'GENERATING') load(); }, 5000); return () => clearInterval(timer); }, [load, task?.status]);
   useEffect(() => { api('/api/tiktok/status').then(setTikTok).catch(() => setTikTok({ configured: false, connected: false })); }, []);
+  useEffect(() => { api('/api/youtube/status').then(setYoutube).catch(() => setYoutube({ configured: false, connected: false })); }, []);
   const evidence = useMemo(() => evidenceSummary(task), [task]);
   const { research, storyboard, sources, scenes } = evidence;
   if (!task && !error) return <Loader />;
@@ -266,6 +274,7 @@ function VideoStudioPage() {
           <label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         </div>
         <div className="publish-tools"><div><Send /><span><b>{tiktok?.connected ? `TikTok • ${tiktok.displayName || 'Đã kết nối'}` : 'Chuẩn bị xuất bản'}</b><small>Duyệt nguồn và video trước khi gửi TikTok.</small></span></div><button type="button" onClick={copyCaption}><Copy /> Sao chép caption</button>{tiktok?.configured && !tiktok.connected ? <a href="/api/tiktok/connect"><Send /> Kết nối TikTok</a> : tiktok?.connected && task.outputPath ? <button type="button" className="publish-primary" onClick={() => setShowPublish(true)}><Check /> Duyệt & đăng TikTok</button> : <Link to="/calendar"><CalendarDays /> Lên lịch</Link>}</div>
+        <div className="publish-tools youtube-tools"><div><CirclePlay /><span><b>{youtube?.connected ? `YouTube • ${youtube.channelTitle || 'Đã kết nối'}` : 'YouTube Publisher'}</b><small>Upload có xác nhận; project chưa audit có thể chỉ đăng private.</small></span></div>{youtube?.configured && !youtube.connected ? <a href="/api/youtube/connect"><Send /> Kết nối YouTube</a> : youtube?.connected && task.outputPath ? <button type="button" className="publish-primary" onClick={() => setShowYoutubePublish(true)}><Check /> Duyệt & upload YouTube</button> : <Link to="/profile"><UserRound /> Cấu hình kênh</Link>}</div>
 
         {(sources.length > 0 || scenes.length > 0) && <section className="evidence-panel">
           <div className="evidence-head"><div><ShieldCheck /><span><small>RESEARCH & STORYBOARD</small><h3>Dữ kiện đứng sau video</h3></span></div><span>{sources.length} nguồn • {scenes.length} cảnh</span></div>
@@ -276,6 +285,7 @@ function VideoStudioPage() {
       </form>
     </div>}
     {showPublish && task && <TikTokPublishModal task={task} onClose={() => setShowPublish(false)} onPublished={(result) => { setShowPublish(false); setMessage(`${result.message}. Mã: ${result.publishId}`); }} />}
+    {showYoutubePublish && task && <YouTubePublishModal task={task} onClose={() => setShowYoutubePublish(false)} onPublished={(result) => { setShowYoutubePublish(false); setMessage(`${result.message}. Video ID: ${result.videoId}`); }} />}
   </div>;
 }
 
@@ -347,6 +357,7 @@ function CampaignModal({ onClose, onCreated }) {
           ...form,
           episodeCount: Number(form.episodeCount),
           targetDurationSeconds: Number(form.targetDurationSeconds),
+          nextRunAt: form.productionEnabled && form.nextRunAt ? form.nextRunAt : null,
         },
       });
       onCreated(created);
@@ -359,8 +370,10 @@ function CampaignModal({ onClose, onCreated }) {
     <label>Tên campaign<input required maxLength="160" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ví dụ: 7 ngày làm chủ AI Agent" /></label>
     <label>Chủ đề xuyên suốt<input required maxLength="500" value={form.theme} onChange={(e) => setForm({ ...form, theme: e.target.value })} placeholder="AI Agent từ nền tảng đến ứng dụng thực tế" /></label>
     <label>Mô tả series<textarea rows="3" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+    <label>Khán giả mục tiêu<input maxLength="160" value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value })} placeholder="Ví dụ: Trẻ em 7-11 tuổi và phụ huynh" /></label>
     <div className="form-grid"><label>Số tập<input type="number" min="1" max="30" value={form.episodeCount} onChange={(e) => setForm({ ...form, episodeCount: e.target.value })} /></label><label>Thời lượng mỗi tập<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: e.target.value })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label></div>
     <div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Cinematic editorial, lilac..." /></label><label>Nhân vật xuyên suốt<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="Host nữ kỹ sư AI..." /></label></div>
+    <div className="automation-box"><div><Bot /><span><b>Lịch sản xuất bản nháp</b><small>Scheduler chỉ dựng tập kế tiếp; không tự đăng TikTok/YouTube.</small></span><input type="checkbox" checked={form.productionEnabled} onChange={(e) => setForm({ ...form, productionEnabled: e.target.checked, cadence: e.target.checked && form.cadence === 'MANUAL' ? 'DAILY' : form.cadence })} /></div>{form.productionEnabled && <div className="form-grid"><label>Nhịp sản xuất<select value={form.cadence} onChange={(e) => setForm({ ...form, cadence: e.target.value })}><option value="HOURLY">Mỗi giờ</option><option value="DAILY">Mỗi ngày</option></select></label><label>Bắt đầu lúc<input type="datetime-local" value={form.nextRunAt} onChange={(e) => setForm({ ...form, nextRunAt: e.target.value })} /></label></div>}</div>
     <button className="button dark full" disabled={busy}>{busy ? 'Đang tạo...' : 'Tạo campaign'} <ArrowRight /></button>
   </form></div>;
 }
@@ -373,18 +386,49 @@ function CampaignsPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [busyCampaign, setBusyCampaign] = useState(null);
   const load = useCallback(() => {
     const params = new URLSearchParams({ page, size: 12, query });
     api(`/api/campaigns?${params}`).then(setData).catch((reason) => setError(reason.message));
   }, [page, query]);
   useEffect(load, [load]);
   const generateEpisodes = async (campaign) => {
-    setError(''); setMessage('');
+    setError(''); setMessage(''); setBusyCampaign(campaign.id);
     try {
       const episodes = await api(`/api/campaigns/${campaign.id}/episodes`, { method: 'POST' });
       setMessage(`Đã chuẩn bị ${episodes.length} tập cho “${campaign.name}”.`);
       load();
     } catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
+  };
+  const planSeries = async (campaign) => {
+    setError(''); setMessage(''); setBusyCampaign(campaign.id);
+    try { await api(`/api/campaigns/${campaign.id}/plan`, { method: 'POST' }); setMessage(`Series Bible cho “${campaign.name}” đã sẵn sàng.`); load(); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
+  };
+  const produceNext = async (campaign) => {
+    setError(''); setMessage(''); setBusyCampaign(campaign.id);
+    try { const task = await api(`/api/campaigns/${campaign.id}/produce-next`, { method: 'POST' }); setMessage(`Đang dựng ${task.title}. Video sẽ về trạng thái chờ duyệt.`); load(); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
+  };
+  const toggleAutomation = async (campaign) => {
+    setError(''); setBusyCampaign(campaign.id);
+    const enabled = !campaign.productionEnabled;
+    try {
+      await api(`/api/campaigns/${campaign.id}`, { method: 'PUT', body: {
+        name: campaign.name, theme: campaign.theme, description: campaign.description,
+        episodeCount: campaign.episodeCount, targetDurationSeconds: campaign.targetDurationSeconds,
+        visualStyle: campaign.visualStyle, characterDescription: campaign.characterDescription,
+        audience: campaign.audience, status: campaign.status,
+        cadence: enabled && campaign.cadence === 'MANUAL' ? 'DAILY' : campaign.cadence,
+        productionEnabled: enabled, nextRunAt: enabled ? new Date().toISOString().slice(0, 19) : null,
+      } });
+      setMessage(enabled ? 'Đã bật lịch sản xuất bản nháp.' : 'Đã tạm dừng lịch tự động.');
+      load();
+    } catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
   };
   const remove = async (campaign) => {
     if (!window.confirm(`Xóa campaign “${campaign.name}”? Các video đã tạo vẫn được giữ lại.`)) return;
@@ -400,7 +444,8 @@ function CampaignsPage() {
       <div className="campaign-card-head"><span className={`campaign-status ${campaign.status}`}>{campaign.status}</span><button onClick={() => remove(campaign)}><Trash2 /></button></div>
       <h3>{campaign.name}</h3><p>{campaign.description || campaign.theme}</p><div className="campaign-theme">{campaign.theme}</div>
       <div className="campaign-metrics"><span><Layers3 /><b>{campaign.episodeCount}</b><small>TẬP</small></span><span><Clock3 /><b>{campaign.targetDurationSeconds}s</b><small>MỖI TẬP</small></span><span><UserRound /><b>{campaign.ownerName}</b><small>CHỦ SỞ HỮU</small></span></div>
-      <button className="button dark full" onClick={() => generateEpisodes(campaign)}><WandSparkles /> {campaign.status === 'ACTIVE' ? 'Mở lại danh sách tập' : 'Tạo toàn bộ tập'}</button>
+      <div className="campaign-plan-state"><span className={campaign.seriesPlanJson ? 'ready' : ''}><Bot /> {campaign.seriesPlanJson ? 'Series Bible đã có' : 'Chưa tạo Series Bible'}</span><span><CalendarDays /> {campaign.productionEnabled ? `${campaign.cadence} · ${campaign.nextRunAt?.replace('T', ' ').slice(0, 16)}` : 'Lịch đang tắt'}</span></div>
+      <div className="campaign-action-grid"><button disabled={busyCampaign === campaign.id} onClick={() => planSeries(campaign)}><Bot /> Lên ý tưởng AI</button><button disabled={busyCampaign === campaign.id} onClick={() => generateEpisodes(campaign)}><Layers3 /> Tạo danh sách tập</button><button className="primary" disabled={busyCampaign === campaign.id} onClick={() => produceNext(campaign)}><WandSparkles /> Sản xuất tập kế</button><button disabled={busyCampaign === campaign.id || campaign.status === 'COMPLETED'} onClick={() => toggleAutomation(campaign)}><CalendarDays /> {campaign.productionEnabled ? 'Tạm dừng lịch' : 'Bật lịch mỗi ngày'}</button></div>
     </article>)}</section><Pagination page={data.number} totalPages={data.totalPages} onChange={setPage} /></> : <EmptyState icon={Layers3} title="Chưa có campaign" description="Tạo series đầu tiên để sản xuất nội dung đều đặn." action={<button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo campaign</button>} />}
     {showCreate && <CampaignModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
   </div>;
@@ -434,12 +479,13 @@ export default function App() {
   return <Routes>
     <Route path="/login" element={<LoginPage />} />
     <Route element={<Protected />}><Route element={<AppShell />}>
-      <Route index element={<DashboardPage />} />
+      <Route index element={<UserHomePage />} />
       <Route path="videos" element={<VideosPage />} />
       <Route path="videos/:id" element={<VideoStudioPage />} />
       <Route path="campaigns" element={<CampaignsPage />} />
       <Route path="calendar" element={<CalendarPage />} />
-      <Route element={<Protected admin />}><Route path="admin/users" element={<AdminUsersPage />} /></Route>
+      <Route path="profile" element={<ProfilePage />} />
+      <Route element={<Protected admin />}><Route path="admin" element={<AdminDashboardPage />} /><Route path="admin/users" element={<AdminUsersPage />} /></Route>
     </Route></Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;

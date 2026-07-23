@@ -83,6 +83,17 @@ public class PublicationService {
     }
 
     @Transactional
+    public PublicationResponse recordYouTubeSubmission(WorkTask task, String videoId) {
+        Publication item = new Publication();
+        item.setTask(task);
+        item.setPlatform(Platform.YOUTUBE);
+        item.setStatus(PublicationStatus.PROCESSING);
+        item.setExternalId(videoId);
+        item.setNote("YouTube đang xử lý video sau khi người dùng đã xem và xác nhận upload.");
+        return PublicationResponse.from(repository.save(item));
+    }
+
+    @Transactional
     public PublicationResponse updateTikTokSubmission(String publishId, PublicationStatus status, String note) {
         Publication item = repository.findWithTaskByExternalId(publishId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy lượt đăng TikTok"));
