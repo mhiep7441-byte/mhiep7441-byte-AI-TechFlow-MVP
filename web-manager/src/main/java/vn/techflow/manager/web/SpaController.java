@@ -2,6 +2,7 @@ package vn.techflow.manager.web;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
 public class SpaController {
@@ -11,5 +12,11 @@ public class SpaController {
             "/admin/users", "/admin/feedback", "/analytics"})
     public String index() {
         return "forward:/index.html";
+    }
+
+    @GetMapping("/health")
+    @org.springframework.web.bind.annotation.ResponseBody
+    public String health() {
+        return "OK";
     }
 }
