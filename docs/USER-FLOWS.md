@@ -57,4 +57,3 @@ flowchart TD
 - Worker thiếu API key vẫn tạo Series Bible offline.
 - Không upload TikTok/YouTube nếu thiếu `consent=true`.
 - Không upload task chưa ở `DRAFT_REQUIRES_REVIEW` hoặc `DONE`.
-

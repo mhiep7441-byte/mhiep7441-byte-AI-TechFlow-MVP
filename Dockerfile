@@ -21,6 +21,9 @@ RUN pip3 install --no-cache-dir --break-system-packages -r worker-requirements.t
 COPY --from=backend /workspace/web-manager/target/web-manager-1.1.0.jar ./app.jar
 COPY video_worker.py ./video_worker.py
 COPY research_agent.py ./research_agent.py
+COPY content_guard.py ./content_guard.py
+COPY series_planner.py ./series_planner.py
+COPY topics.txt ./topics.txt
 USER techflow
 EXPOSE 8080
-CMD ["sh", "-c", "if [ -n \"$DATABASE_URL_RAW\" ]; then db_target=\"${DATABASE_URL_RAW#postgresql://}\"; export DATABASE_URL=\"jdbc:postgresql://${db_target#*@}\"; fi; exec java -Xms64m -Xmx192m -Xss256k -XX:MaxMetaspaceSize=112m -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -jar /app/app.jar"]
+CMD ["sh", "-c", "if [ -n \"$DATABASE_URL_RAW\" ]; then db_target=\"${DATABASE_URL_RAW#postgresql://}\"; export DATABASE_URL=\"jdbc:postgresql://${db_target#*@}\"; fi; exec java -Xms96m -Xmx320m -Xss256k -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -jar /app/app.jar"]

@@ -155,4 +155,3 @@ stateDiagram-v2
 ```
 
 `PROCESSING` phía cuối là trạng thái `Publication`, không thay thế trạng thái review của `WorkTask`.
-

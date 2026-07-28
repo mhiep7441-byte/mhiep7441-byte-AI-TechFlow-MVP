@@ -60,4 +60,3 @@ Checklist:
 - AI provider lỗi: Gemini → OpenAI → offline planner.
 - Research lỗi: worker ghi rõ offline và Content Guard chặn “ready for review”.
 - Upload social lỗi: publication không được đánh dấu published; video draft vẫn trên Cloudinary.
-

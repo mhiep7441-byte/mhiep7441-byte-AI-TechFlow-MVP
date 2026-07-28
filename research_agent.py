@@ -177,11 +177,13 @@ def research_topic(topic: str) -> ResearchBrief:
         LOGGER.warning("Thiếu OpenAI SDK; Research Agent chạy chế độ offline.")
         return offline_brief(topic)
 
+    channel_name = os.getenv("CHANNEL_NAME", "TechFlow VN")
     prompt = f"""
-Bạn là Research Agent cho kênh công nghệ tiếng Việt. Nghiên cứu chủ đề: {topic}
+Bạn là Research Agent cho kênh {channel_name}. Nghiên cứu chủ đề: {topic}
 
 Quy tắc bắt buộc:
 - Ưu tiên tài liệu chính thức, bài nghiên cứu gốc, trang sản phẩm/changelog chính thức và cơ quan có thẩm quyền.
+- Nếu chủ đề là câu chuyện sáng tạo (phiêu lưu, trẻ em, giáo dục), hãy nghiên cứu các dữ kiện thực tế liên quan (khoa học, lịch sử, địa lý) để câu chuyện có nền tảng đáng tin cậy.
 - Với tin mới, xác nhận ngày xảy ra sự kiện và ngày xuất bản; không dựa vào một bài tổng hợp duy nhất.
 - Không sao chép nguyên văn dài. Không suy đoán số liệu hoặc tính năng.
 - Mỗi khẳng định quan trọng phải tham chiếu source_ids.

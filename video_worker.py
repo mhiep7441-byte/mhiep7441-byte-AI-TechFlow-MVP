@@ -32,8 +32,8 @@ SCRIPT_MODEL = os.getenv("OPENAI_SCRIPT_MODEL", os.getenv("OPENAI_MODEL", "gpt-5
 IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
 IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
 ENABLE_AI_IMAGES = os.getenv("ENABLE_AI_IMAGES", "true").lower() in {"1", "true", "yes", "on"}
-MAX_AI_IMAGES = max(0, min(int(os.getenv("MAX_AI_IMAGES", "4")), 8))
-MAX_SCENES = max(4, min(int(os.getenv("MAX_SCENES", "6")), 8))
+MAX_AI_IMAGES = max(0, min(int(os.getenv("MAX_AI_IMAGES", "20")), 30))
+MAX_SCENES = max(4, min(int(os.getenv("MAX_SCENES", "8")), 30))
 DEFAULT_TARGET_DURATION_SECONDS = 60
 MAX_TARGET_DURATION_SECONDS = 600
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -59,7 +59,7 @@ class VideoPlan:
     caption: str
     hashtags: list[str]
     hook: str = ""
-    character: str = "Linh, nữ kỹ sư AI người Việt trẻ, tóc đen ngắn, áo khoác tím than"
+    character: str = ""
     visual_style: str = "cinematic editorial technology, lilac and cobalt, realistic light"
     provider: str = "fallback"
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS
@@ -95,58 +95,76 @@ def fallback_plan(
     topic: str,
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
 ) -> VideoPlan:
-    character = "Linh, nữ kỹ sư AI người Việt trẻ, tóc đen ngắn, áo khoác tím than"
+    duration = normalized_duration(target_duration_seconds)
+    max_s = scene_limit(duration)
+    base_scenes = [
+        Scene(
+            "MỞ ĐẦU",
+            f"{topic}. Hãy cùng khám phá câu chuyện này từ đầu.",
+            topic,
+            f"Cinematic opening scene introducing the world of {topic}, vibrant colors, warm lighting",
+            "xuất hiện và giới thiệu chủ đề",
+            "fast dolly in",
+        ),
+        Scene(
+            "BỐI CẢNH",
+            f"Để hiểu {topic}, ta cần biết bối cảnh và những yếu tố quan trọng nhất.",
+            "Bối cảnh và yếu tố chính",
+            f"Wide establishing shot showing the environment and context of {topic}",
+            "quan sát khung cảnh xung quanh",
+            "slow orbit",
+        ),
+        Scene(
+            "DIỄN BIẾN",
+            "Đây là phần thú vị nhất — khi mọi thứ bắt đầu diễn ra và thay đổi.",
+            "Hành động và thay đổi",
+            f"Dynamic action scene showing the key development in {topic}",
+            "tham gia vào hành động chính",
+            "left to right pan",
+        ),
+        Scene(
+            "KHÁM PHÁ",
+            "Mỗi chi tiết đều có ý nghĩa. Hãy nhìn kỹ hơn vào những điều ẩn giấu.",
+            "Chi tiết quan trọng",
+            f"Close-up detail shot revealing hidden aspects of {topic}",
+            "phát hiện điều bất ngờ",
+            "subtle push in",
+        ),
+        Scene(
+            "KẾT LUẬN",
+            f"Đó là câu chuyện về {topic}. Theo dõi kênh để xem tập tiếp theo.",
+            "Tóm tắt • Theo dõi kênh",
+            f"Hero shot with warm lighting, closing the story of {topic}",
+            "mỉm cười và vẫy tay",
+            "hero pull back",
+        ),
+    ]
+    # Duplicate middle scenes to fill longer durations
+    scenes = list(base_scenes)
+    fillers = base_scenes[1:-1]
+    while len(scenes) < max_s and fillers:
+        for filler in fillers:
+            if len(scenes) >= max_s:
+                break
+            copy = Scene(
+                title=f"{filler.title} {len(scenes)}",
+                narration=filler.narration,
+                on_screen_text=filler.on_screen_text,
+                visual_prompt=filler.visual_prompt,
+                character_action=filler.character_action,
+                camera_motion=filler.camera_motion,
+            )
+            scenes.insert(-1, copy)
     return VideoPlan(
         topic=topic,
-        hook=f"{topic} thực sự thay đổi cách chúng ta làm việc như thế nào?",
-        character=character,
-        visual_style="cinematic editorial illustration, deep navy, electric lilac, warm skin tones",
-        scenes=[
-            Scene(
-                "MỞ ĐẦU",
-                f"{topic} nghe có vẻ phức tạp. Linh sẽ tóm tắt phần cốt lõi trong chưa đầy một phút.",
-                topic,
-                "Vietnamese AI engineer enters a luminous technology studio, confident eye contact",
-                "bước vào studio và nhìn thẳng máy quay",
-                "fast dolly in",
-            ),
-            Scene(
-                "VẤN ĐỀ",
-                "Khi công việc lặp lại quá nhiều, chúng ta mất thời gian cho thao tác thay vì giải quyết vấn đề thật.",
-                "Bớt thao tác lặp lại\nTập trung vào giá trị",
-                "engineer surrounded by floating repetitive task cards and code windows",
-                "gạt các thẻ công việc lặp lại sang một bên",
-                "slow orbit",
-            ),
-            Scene(
-                "CÁCH HOẠT ĐỘNG",
-                "Một quy trình tốt đi từ yêu cầu rõ ràng, qua xử lý có kiểm soát, rồi kiểm tra kết quả trước khi sử dụng.",
-                "Yêu cầu → Xử lý → Kiểm tra",
-                "three-stage holographic workflow in a professional software lab",
-                "chỉ vào ba bước trên bảng hologram",
-                "left to right pan",
-            ),
-            Scene(
-                "KIỂM CHỨNG",
-                "Đừng tin mọi kết quả ngay lập tức. Hãy đối chiếu nguồn, ngày công bố và giới hạn của công nghệ.",
-                "Nguồn chính thức\nNgày công bố\nGiới hạn",
-                "engineer compares verified official documents on a large transparent display",
-                "đánh dấu các nguồn đã được xác minh",
-                "subtle push in",
-            ),
-            Scene(
-                "KẾT LUẬN",
-                f"Đó là cách tiếp cận {topic} có trách nhiệm. Theo dõi TechFlow để xem bản phân tích tiếp theo.",
-                "Hiểu đúng • Dùng đúng • Kiểm tra",
-                "hero shot of the engineer in a modern Vietnamese technology studio",
-                "mỉm cười và đóng bảng phân tích",
-                "hero pull back",
-            ),
-        ],
-        caption=f"{topic} — giải thích ngắn gọn, có kiểm chứng.",
-        hashtags=["#congnghe", "#laptrinh", "#AI", "#TechFlowVN"],
+        hook=f"{topic} — câu chuyện bạn chưa biết.",
+        character="",
+        visual_style="cinematic editorial illustration, vibrant colors, warm lighting, expressive composition",
+        scenes=scenes,
+        caption=f"{topic} — khám phá cùng {CHANNEL_NAME}.",
+        hashtags=["#video", f"#{slugify(topic)}", f"#{CHANNEL_NAME.replace(' ', '')}"],
         provider="fallback",
-        target_duration_seconds=normalized_duration(target_duration_seconds),
+        target_duration_seconds=duration,
     )
 
 
@@ -201,7 +219,7 @@ def generate_plan(
     evidence = json.dumps(brief.to_dict(), ensure_ascii=False)
     prompt = f"""
 Bạn là Creative Director và biên tập viên video dọc cho kênh {CHANNEL_NAME}.
-Tạo storyboard video công nghệ tiếng Việt khoảng {duration} giây về: {topic}
+Tạo storyboard video tiếng Việt khoảng {duration} giây về: {topic}
 
 Research brief (chỉ dùng dữ kiện có trong đây):
 {evidence}
@@ -212,7 +230,9 @@ Nhân vật/host do người dùng chọn: {character_description or "(AI tự �
 Yêu cầu:
 - Từ 4 đến {maximum_scenes} cảnh, hook mạnh trong 2 giây đầu; nhịp tự nhiên, không giật tít sai.
 - Nội dung phải đủ sâu cho thời lượng mục tiêu, có mở bài, diễn tiến và kết luận; không lặp ý để kéo dài.
-- Có một nhân vật người Việt nhất quán xuyên suốt; mô tả ngoại hình cụ thể trong trường character.
+- Tạo một nhân vật nhất quán xuyên suốt phù hợp với chủ đề; mô tả ngoại hình cụ thể trong trường character.
+- Nếu chủ đề là câu chuyện phiêu lưu, trẻ em, giáo dục, v.v., hãy sáng tạo nhân vật phù hợp (ví dụ: chú chó, robot, bé gái, siêu anh hùng...).
+- Với video dài (trên 120 giây), tạo đủ cảnh để mỗi cảnh khoảng 8-12 giây, có cốt truyện rõ ràng: mở đầu, thắt nút, cao trào, kết thúc.
 - Mỗi cảnh có bối cảnh, hành động nhân vật, chuyển động camera và visual_prompt đủ chi tiết để tạo ảnh dọc 9:16.
 - Mỗi khẳng định thực tế phải gắn source_ids hợp lệ. Nếu research offline, nói rõ đây là bản minh họa khái niệm.
 - Câu đọc tự nhiên, ngắn; on_screen_text tối đa 12 từ; không sao chép nguyên văn nguồn.
