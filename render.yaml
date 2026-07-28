@@ -59,6 +59,22 @@ services:
         value: "8"
       - key: RESEARCH_MAX_SOURCES
         value: "8"
+      - key: VIDEO_AUDIO_MODE
+        value: narrated
+      - key: VIDEO_PROVIDER
+        value: kenburns
+      - key: VIDEO_ASPECT_RATIO
+        value: "9:16"
+      - key: VIDEO_RENDER_QUALITY
+        value: draft
+      - key: SEEDANCE2_IMAGE_TO_VIDEO_URL
+        sync: false
+      - key: SEEDANCE2_API_KEY
+        sync: false
+      - key: VEO_IMAGE_TO_VIDEO_URL
+        sync: false
+      - key: VEO_API_KEY
+        sync: false
       - key: CLOUDINARY_URL
         sync: false
       - key: TIKTOK_CLIENT_KEY

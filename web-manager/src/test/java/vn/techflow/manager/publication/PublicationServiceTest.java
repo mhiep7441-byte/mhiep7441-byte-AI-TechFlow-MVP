@@ -6,11 +6,14 @@ import vn.techflow.manager.auth.AuthService;
 import vn.techflow.manager.task.TaskService;
 import vn.techflow.manager.task.TaskStatus;
 import vn.techflow.manager.task.WorkTask;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -39,5 +42,21 @@ class PublicationServiceTest {
         assertThat(publication.getStatus()).isEqualTo(PublicationStatus.READY);
         assertThat(task.getStatus()).isEqualTo(TaskStatus.DONE);
         assertThat(publication.getNote()).contains("Video Studio");
+    }
+
+    @Test
+    void clientCannotMarkPublicationReadyDirectly() {
+        PublicationRepository repository = mock(PublicationRepository.class);
+        TaskService tasks = mock(TaskService.class);
+        PublicationService service = new PublicationService(repository, tasks, mock(AuthService.class));
+        WorkTask task = new WorkTask();
+        when(tasks.getAccessible(eq(3L), any())).thenReturn(task);
+        var authentication = new TestingAuthenticationToken("user", "password");
+
+        assertThatThrownBy(() -> service.create(
+                new PublicationRequest(3L, Platform.TIKTOK, PublicationStatus.READY, null, "external", ""),
+                authentication))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("403");
     }
 }

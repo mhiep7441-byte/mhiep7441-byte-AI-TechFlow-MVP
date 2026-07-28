@@ -16,5 +16,9 @@ public record CampaignRequest(
         java.time.LocalDateTime nextRunAt,
         CampaignStatus status,
         String characterImageUrl,
-        String characterReferencePrompt
+        String characterReferencePrompt,
+        @Pattern(regexp = "narrated|silent_animation") String audioMode,
+        @Pattern(regexp = "kenburns|seedance2_fast|veo") String videoProvider,
+        @Pattern(regexp = "9:16|16:9") String aspectRatio,
+        @Pattern(regexp = "draft|hd|2k") String renderQuality
 ) {}

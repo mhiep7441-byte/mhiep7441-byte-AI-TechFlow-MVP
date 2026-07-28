@@ -3,6 +3,7 @@ package vn.techflow.manager.task;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
@@ -18,5 +19,9 @@ public record TaskRequest(
         LocalDate dueDate,
         @Min(30) @Max(600) Integer targetDurationSeconds,
         @Size(max = 240) String visualStyle,
-        @Size(max = 240) String characterDescription
+        @Size(max = 240) String characterDescription,
+        @Pattern(regexp = "narrated|silent_animation") String audioMode,
+        @Pattern(regexp = "kenburns|seedance2_fast|veo") String videoProvider,
+        @Pattern(regexp = "9:16|16:9") String aspectRatio,
+        @Pattern(regexp = "draft|hd|2k") String renderQuality
 ) {}

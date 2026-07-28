@@ -263,6 +263,7 @@ public class CampaignService {
             task.setVisualStyle(campaign.getVisualStyle());
             task.setCharacterDescription(campaign.getCharacterDescription());
             task.setCharacterImageUrl(campaign.getCharacterImageUrl());
+            applyRenderProfile(campaign, task);
             task.setPriority(Priority.MEDIUM);
             task.setStatus(TaskStatus.TODO);
             applyEpisodePlan(campaign, task, number, planned);
@@ -287,6 +288,11 @@ public class CampaignService {
             task.setVisualStyle(campaign.getVisualStyle());
             task.setCharacterDescription(campaign.getCharacterDescription());
             task.setCharacterImageUrl(campaign.getCharacterImageUrl());
+            applyRenderProfile(campaign, task);
+            if (status == TaskStatus.FAILED) {
+                task.setStatus(TaskStatus.TODO);
+                task.setErrorMessage(null);
+            }
             applyEpisodePlan(campaign, task, number, planned);
         }
         tasks.saveAll(episodes);
@@ -359,6 +365,10 @@ public class CampaignService {
         campaign.setCharacterDescription(clean(request.characterDescription()));
         campaign.setCharacterImageUrl(clean(request.characterImageUrl()).isBlank() ? null : clean(request.characterImageUrl()));
         campaign.setCharacterReferencePrompt(clean(request.characterReferencePrompt()));
+        campaign.setAudioMode(option(request.audioMode(), "narrated"));
+        campaign.setVideoProvider(option(request.videoProvider(), "kenburns"));
+        campaign.setAspectRatio(option(request.aspectRatio(), "9:16"));
+        campaign.setRenderQuality(option(request.renderQuality(), "draft"));
         campaign.setAudience(clean(request.audience()));
         campaign.setCadence(request.cadence() == null ? CampaignCadence.MANUAL : request.cadence());
         campaign.setProductionEnabled(Boolean.TRUE.equals(request.productionEnabled())
@@ -377,6 +387,18 @@ public class CampaignService {
         } catch (Exception exception) {
             return json.createObjectNode();
         }
+    }
+
+    private static void applyRenderProfile(Campaign campaign, WorkTask task) {
+        task.setAudioMode(campaign.getAudioMode());
+        task.setVideoProvider(campaign.getVideoProvider());
+        task.setAspectRatio(campaign.getAspectRatio());
+        task.setRenderQuality(campaign.getRenderQuality());
+    }
+
+    private static String option(String value, String fallback) {
+        String cleaned = clean(value);
+        return cleaned.isBlank() ? fallback : cleaned;
     }
 
     private static LocalDateTime nextRun(CampaignCadence cadence, LocalDateTime from) {

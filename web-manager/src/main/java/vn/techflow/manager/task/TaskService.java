@@ -124,6 +124,12 @@ public class TaskService {
             if (task.getCharacterImageUrl() != null && !task.getCharacterImageUrl().isBlank()) {
                 command.addAll(List.of("--character-image", task.getCharacterImageUrl()));
             }
+            command.addAll(List.of(
+                    "--audio-mode", task.getAudioMode(),
+                    "--video-provider", task.getVideoProvider(),
+                    "--aspect-ratio", task.getAspectRatio(),
+                    "--render-quality", task.getRenderQuality()
+            ));
             Process process = new ProcessBuilder(command)
                     .directory(projectDirectory.toFile())
                     .redirectErrorStream(true)
@@ -179,11 +185,19 @@ public class TaskService {
         }
         task.setVisualStyle(clean(request.visualStyle()));
         task.setCharacterDescription(clean(request.characterDescription()));
+        task.setAudioMode(option(request.audioMode(), "narrated"));
+        task.setVideoProvider(option(request.videoProvider(), "kenburns"));
+        task.setAspectRatio(option(request.aspectRatio(), "9:16"));
+        task.setRenderQuality(option(request.renderQuality(), "draft"));
         if (request.status() != null) task.setStatus(request.status());
         else if (creating) task.setStatus(TaskStatus.TODO);
     }
 
     private static String clean(String value) { return value == null ? "" : value.trim(); }
+    private static String option(String value, String fallback) {
+        String cleaned = clean(value);
+        return cleaned.isBlank() ? fallback : cleaned;
+    }
     private static String tail(String value, int limit) {
         if (value == null) return "Lỗi không xác định";
         return value.length() <= limit ? value : value.substring(value.length() - limit);

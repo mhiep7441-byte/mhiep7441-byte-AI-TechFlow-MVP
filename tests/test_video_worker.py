@@ -69,8 +69,15 @@ class VideoWorkerTests(unittest.TestCase):
 
     def test_long_form_scene_limit_and_duration_are_bounded(self):
         self.assertEqual(6, video_worker.scene_limit(60))
+        self.assertEqual(18, video_worker.scene_limit(180))
         self.assertEqual(30, video_worker.scene_limit(600))
         self.assertEqual(600, video_worker.normalized_duration(999))
+
+    def test_render_profiles_support_vertical_and_landscape(self):
+        video_worker.apply_render_profile("16:9", "hd")
+        self.assertEqual((1280, 720), (video_worker.WIDTH, video_worker.HEIGHT))
+        video_worker.apply_render_profile("9:16", "draft")
+        self.assertEqual((540, 960), (video_worker.WIDTH, video_worker.HEIGHT))
 
     def test_auto_provider_prefers_gemini(self):
         class FakeResponse:
