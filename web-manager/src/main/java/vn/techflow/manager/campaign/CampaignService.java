@@ -2,13 +2,20 @@ package vn.techflow.manager.campaign;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import vn.techflow.manager.auth.AppUser;
 import vn.techflow.manager.auth.AuthService;
@@ -18,9 +25,17 @@ import vn.techflow.manager.task.TaskRepository;
 import vn.techflow.manager.task.TaskStatus;
 import vn.techflow.manager.task.WorkTask;
 
+import java.io.IOException;
+import java.net.URI;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class CampaignService {
@@ -40,14 +55,26 @@ public class CampaignService {
     private final AuthService authService;
     private final SeriesPlannerService planner;
     private final ObjectMapper json;
+    private final Path projectDirectory;
+    private final String pythonCommand;
+    private final String workerScript;
+    private final RestClient restClient;
 
     public CampaignService(CampaignRepository campaigns, TaskRepository tasks, AuthService authService,
-                           SeriesPlannerService planner, ObjectMapper json) {
+                           SeriesPlannerService planner, ObjectMapper json,
+                           @Value("${techflow.project-dir:..}") String projectDirectory,
+                           @Value("${techflow.python-command:python}") String pythonCommand,
+                           @Value("${techflow.worker-script:video_worker.py}") String workerScript,
+                           RestClient.Builder restClientBuilder) {
         this.campaigns = campaigns;
         this.tasks = tasks;
         this.authService = authService;
         this.planner = planner;
         this.json = json;
+        this.projectDirectory = Path.of(projectDirectory).toAbsolutePath().normalize();
+        this.pythonCommand = pythonCommand;
+        this.workerScript = workerScript;
+        this.restClient = restClientBuilder.build();
     }
 
     @Transactional(readOnly = true)
@@ -72,6 +99,97 @@ public class CampaignService {
         Campaign campaign = accessible(id, authentication);
         apply(campaign, request);
         return campaigns.save(campaign);
+    }
+
+    @Transactional(readOnly = true)
+    public Campaign get(Long id, Authentication authentication) {
+        return accessible(id, authentication);
+    }
+
+    @Transactional
+    public Campaign generateCharacter(Long id, CharacterGenerationRequest request, Authentication authentication) {
+        Campaign campaign = accessible(id, authentication);
+        String prompt = clean(request.description()).isBlank()
+                ? clean(campaign.getCharacterDescription()) : clean(request.description());
+        if (prompt.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cần mô tả nhân vật để tạo reference sheet");
+        }
+        try {
+            List<String> command = new ArrayList<>(List.of(
+                    pythonCommand, workerScript, "--topic", campaign.getTheme(),
+                    "--visual-style", clean(campaign.getVisualStyle()),
+                    "--character", prompt, "--generate-character"
+            ));
+            Process process = new ProcessBuilder(command)
+                    .directory(projectDirectory.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            int exitCode = process.waitFor();
+            if (exitCode != 0) throw new IOException("Worker lỗi " + exitCode + ": " + tail(output, 2500));
+            String url = parseCharacterUrl(output).orElseThrow(() ->
+                    new IOException("Worker không trả về CHARACTER_IMAGE_URL"));
+            campaign.setCharacterDescription(prompt);
+            campaign.setCharacterReferencePrompt(prompt);
+            campaign.setCharacterImageUrl(url);
+            syncOpenEpisodes(campaign);
+            return campaigns.save(campaign);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Tạo nhân vật bị gián đoạn", exception);
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, tail(exception.getMessage(), 3500), exception);
+        }
+    }
+
+    @Transactional
+    public Campaign uploadCharacter(Long id, MultipartFile file, String description, Authentication authentication) {
+        Campaign campaign = accessible(id, authentication);
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cần chọn ảnh nhân vật");
+        }
+        if (!String.valueOf(file.getContentType()).startsWith("image/")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File upload phải là ảnh");
+        }
+        String cloudinaryUrl = System.getenv("CLOUDINARY_URL");
+        if (cloudinaryUrl == null || cloudinaryUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Chưa cấu hình CLOUDINARY_URL");
+        }
+        try {
+            URI uri = URI.create(cloudinaryUrl);
+            String[] credentials = Optional.ofNullable(uri.getUserInfo()).orElse(":").split(":", 2);
+            if (credentials.length < 2 || credentials[0].isBlank() || credentials[1].isBlank() || uri.getHost() == null) {
+                throw new IOException("CLOUDINARY_URL không hợp lệ");
+            }
+            String cloudName = uri.getHost();
+            String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+            String folder = "techflow/characters";
+            MultipartBodyBuilder body = new MultipartBodyBuilder();
+            body.part("file", new NamedByteArrayResource(file.getBytes(), file.getOriginalFilename()))
+                    .contentType(MediaType.parseMediaType(
+                            Optional.ofNullable(file.getContentType()).orElse(MediaType.IMAGE_PNG_VALUE)));
+            body.part("api_key", credentials[0]);
+            body.part("timestamp", timestamp);
+            body.part("folder", folder);
+            body.part("signature", sha1("folder=" + folder + "&timestamp=" + timestamp + credentials[1]));
+            MultiValueMap<String, org.springframework.http.HttpEntity<?>> multipart = body.build();
+            JsonNode response = restClient.post()
+                    .uri("https://api.cloudinary.com/v1_1/{cloud}/image/upload", cloudName)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(multipart)
+                    .retrieve()
+                    .body(JsonNode.class);
+            String url = response == null ? "" : response.path("secure_url").asText("");
+            if (url.isBlank()) throw new IOException("Cloudinary không trả về secure_url");
+            String prompt = clean(description).isBlank() ? campaign.getCharacterDescription() : clean(description);
+            campaign.setCharacterDescription(prompt);
+            campaign.setCharacterReferencePrompt(prompt);
+            campaign.setCharacterImageUrl(url);
+            syncOpenEpisodes(campaign);
+            return campaigns.save(campaign);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Upload Cloudinary thất bại: " + tail(exception.getMessage(), 2500), exception);
+        }
     }
 
     @Transactional
@@ -227,4 +345,48 @@ public class CampaignService {
 
     private static String clean(String value) { return value == null ? "" : value.trim(); }
     private static String limit(String value, int max) { return value.length() <= max ? value : value.substring(0, max); }
+    private static String tail(String value, int limit) {
+        if (value == null) return "Lỗi không xác định";
+        return value.length() <= limit ? value : value.substring(value.length() - limit);
+    }
+    private static Optional<String> parseCharacterUrl(String output) {
+        Matcher matcher = Pattern.compile("CHARACTER_IMAGE_URL=(https?://\\S+)").matcher(output);
+        return matcher.find() ? Optional.of(matcher.group(1).trim()) : Optional.empty();
+    }
+
+    private static String sha1(String value) throws IOException {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-1").digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) hex.append(String.format("%02x", b));
+            return hex.toString();
+        } catch (Exception exception) {
+            throw new IOException("Không tạo được chữ ký Cloudinary", exception);
+        }
+    }
+
+    private void syncOpenEpisodes(Campaign campaign) {
+        List<WorkTask> episodes = tasks.findByCampaignIdOrderByEpisodeNumberAsc(campaign.getId());
+        for (WorkTask task : episodes) {
+            if (task.getStatus() == TaskStatus.TODO || task.getStatus() == TaskStatus.FAILED) {
+                task.setCharacterDescription(campaign.getCharacterDescription());
+                task.setCharacterImageUrl(campaign.getCharacterImageUrl());
+            }
+        }
+        if (!episodes.isEmpty()) tasks.saveAll(episodes);
+    }
+
+    private static final class NamedByteArrayResource extends ByteArrayResource {
+        private final String filename;
+
+        private NamedByteArrayResource(byte[] byteArray, String filename) {
+            super(byteArray);
+            this.filename = clean(filename).isBlank() ? "character-reference.png" : filename;
+        }
+
+        @Override
+        public String getFilename() {
+            return filename;
+        }
+    }
 }

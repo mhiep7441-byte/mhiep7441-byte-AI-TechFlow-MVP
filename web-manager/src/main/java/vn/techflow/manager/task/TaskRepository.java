@@ -13,6 +13,14 @@ public interface TaskRepository extends JpaRepository<WorkTask, Long> {
     List<WorkTask> findByCampaignIdOrderByEpisodeNumberAsc(Long campaignId);
     Optional<WorkTask> findFirstByCampaignIdAndStatusOrderByEpisodeNumberAsc(Long campaignId, TaskStatus status);
 
+    @Query("""
+            select t from WorkTask t
+            where t.owner.id = :ownerId
+              and t.researchJson <> '{}'
+            order by t.updatedAt desc
+            """)
+    List<WorkTask> findResearchNotebook(Long ownerId, Pageable pageable);
+
     @Query("select t from WorkTask t left join fetch t.owner where t.id = :id")
     Optional<WorkTask> findWithOwnerById(Long id);
 

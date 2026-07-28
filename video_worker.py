@@ -11,6 +11,13 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -20,7 +27,6 @@ from typing import Any
 
 from research_agent import ResearchBrief, research_topic
 from content_guard import assess_content
-
 WIDTH = max(360, int(os.getenv("VIDEO_WIDTH", "540")))
 HEIGHT = max(640, int(os.getenv("VIDEO_HEIGHT", "960")))
 FPS = max(8, int(os.getenv("VIDEO_FPS", "12")))
@@ -33,7 +39,7 @@ IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
 IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
 ENABLE_AI_IMAGES = os.getenv("ENABLE_AI_IMAGES", "true").lower() in {"1", "true", "yes", "on"}
 MAX_AI_IMAGES = max(0, min(int(os.getenv("MAX_AI_IMAGES", "20")), 30))
-MAX_SCENES = max(4, min(int(os.getenv("MAX_SCENES", "8")), 30))
+MAX_SCENES = max(4, min(int(os.getenv("MAX_SCENES", "6")), 30))
 DEFAULT_TARGET_DURATION_SECONDS = 60
 MAX_TARGET_DURATION_SECONDS = 600
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -64,6 +70,8 @@ class VideoPlan:
     provider: str = "fallback"
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS
     character_image_url: str = ""
+    audio_mode: str = "narrated"
+    video_provider: str = "kenburns"
 
 
 @dataclass
@@ -643,6 +651,26 @@ def media_duration(path: Path) -> float:
     return float(result.stdout.strip())
 
 
+def is_silent_animation(plan: VideoPlan) -> bool:
+    return plan.audio_mode == "silent_animation" or not " ".join(scene.narration for scene in plan.scenes).strip()
+
+
+def build_bgm_command(output: Path, duration: float) -> list[str]:
+    return [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.018",
+        "-f", "lavfi", "-i", "sine=frequency=523:sample_rate=44100",
+        "-filter_complex",
+        "[0:a]volume=0.32[bed];[1:a]volume=0.035,afade=t=in:st=0:d=0.6,afade=t=out:st="
+        + f"{max(0.0, duration - 1.0):.3f}:d=1.0[tone];[bed][tone]amix=inputs=2:duration=first",
+        "-t", f"{duration:.3f}", "-c:a", "libmp3lame", "-q:a", "6", str(output),
+    ]
+
+
+def make_bgm(output: Path, duration: float) -> None:
+    subprocess.run(build_bgm_command(output, duration), check=True, capture_output=True)
+
+
 def srt_time(seconds: float) -> str:
     milliseconds = int(seconds * 1000)
     hours, milliseconds = divmod(milliseconds, 3_600_000)
@@ -708,15 +736,91 @@ def build_motion_ffmpeg_command(
     return command
 
 
+def build_clip_concat_command(clips: list[Path], audio: Path, final: Path) -> list[str]:
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    for clip in clips:
+        command.extend(["-i", str(clip)])
+    audio_index = len(clips)
+    command.extend(["-i", str(audio)])
+    parts = "".join(f"[{index}:v:0]" for index in range(len(clips)))
+    filters = f"{parts}concat=n={len(clips)}:v=1:a=0[vout]"
+    command.extend([
+        "-filter_complex", filters, "-map", "[vout]", "-map", f"{audio_index}:a:0",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27",
+        "-threads", str(FFMPEG_THREADS),
+        "-c:a", "aac", "-b:a", "112k", "-shortest", "-movflags", "+faststart", str(final),
+    ])
+    return command
+
+
+def image_to_video_clip(provider: str, image: Path, scene: Scene, duration: float, output: Path) -> bool:
+    endpoint_var = "SEEDANCE2_IMAGE_TO_VIDEO_URL" if provider == "seedance2_fast" else "VEO_IMAGE_TO_VIDEO_URL"
+    key_var = "SEEDANCE2_API_KEY" if provider == "seedance2_fast" else "VEO_API_KEY"
+    endpoint = os.getenv(endpoint_var, "").strip()
+    api_key = os.getenv(key_var, "").strip()
+    if not endpoint or not api_key:
+        LOGGER.info("Video provider %s chưa cấu hình; dùng Ken Burns.", provider)
+        return False
+    payload = json.dumps({
+        "prompt": f"{scene.visual_prompt}. {scene.character_action}. {scene.camera_motion}. Smooth 9:16 animation.",
+        "duration_seconds": max(5, min(10, round(duration))),
+        "aspect_ratio": "9:16",
+        "image_base64": base64.b64encode(image.read_bytes()).decode("ascii"),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=payload,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=180) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    video_url = str(data.get("video_url") or data.get("url") or "").strip()
+    if not video_url:
+        job_id = str(data.get("id") or data.get("job_id") or "").strip()
+        status_url = str(data.get("status_url") or "").strip()
+        for _ in range(36):
+            time.sleep(5)
+            poll_url = status_url or f"{endpoint.rstrip('/')}/{job_id}"
+            poll = urllib.request.Request(poll_url, headers={"Authorization": f"Bearer {api_key}"})
+            with urllib.request.urlopen(poll, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            video_url = str(data.get("video_url") or data.get("url") or "").strip()
+            if video_url:
+                break
+    if not video_url:
+        raise RuntimeError(f"{provider} không trả về video_url")
+    urllib.request.urlretrieve(video_url, output)
+    return output.exists() and output.stat().st_size > 0
+
+
+def generate_motion_clips(provider: str, images: list[Path], scenes: list[Scene], durations: list[float], output_dir: Path) -> list[Path]:
+    if provider not in {"seedance2_fast", "veo"}:
+        return []
+    output_dir.mkdir(parents=True, exist_ok=True)
+    clips: list[Path] = []
+    for index, (image, scene, duration) in enumerate(zip(images, scenes, durations), 1):
+        clip = output_dir / f"scene_{index:02}.mp4"
+        if not image_to_video_clip(provider, image, scene, duration, clip):
+            return []
+        clips.append(clip)
+    return clips
+
+
 def create_video(plan: VideoPlan, job_dir: Path) -> tuple[Path, float]:
     missing = [binary for binary in ("ffmpeg", "ffprobe") if not shutil.which(binary)]
     if missing:
         raise RuntimeError(f"Thiếu công cụ: {', '.join(missing)}")
 
-    voice = job_dir / "narration.mp3"
-    asyncio.run(make_voice(" ".join(scene.narration for scene in plan.scenes), voice))
-    total = media_duration(voice)
-    weights = [max(1, len(scene.narration)) for scene in plan.scenes]
+    voice = job_dir / ("bgm.mp3" if is_silent_animation(plan) else "narration.mp3")
+    if is_silent_animation(plan):
+        total = float(plan.target_duration_seconds)
+        make_bgm(voice, total)
+        weights = [max(1.0, scene.duration_hint) for scene in plan.scenes]
+    else:
+        asyncio.run(make_voice(" ".join(scene.narration for scene in plan.scenes), voice))
+        total = media_duration(voice)
+        weights = [max(1, len(scene.narration)) for scene in plan.scenes]
     weight_sum = sum(weights)
     durations = [max(2.5, total * weight / weight_sum) for weight in weights]
     duration_scale = total / sum(durations)
@@ -726,12 +830,15 @@ def create_video(plan: VideoPlan, job_dir: Path) -> tuple[Path, float]:
     cursor = 0.0
     subtitles: list[str] = []
     for index, (scene, seconds) in enumerate(zip(plan.scenes, durations), 1):
-        subtitles.append(f"{index}\n{srt_time(cursor)} --> {srt_time(cursor + seconds)}\n{scene.narration}\n")
+        subtitle = scene.narration if scene.narration.strip() else scene.on_screen_text
+        subtitles.append(f"{index}\n{srt_time(cursor)} --> {srt_time(cursor + seconds)}\n{subtitle}\n")
         cursor += seconds
     (job_dir / "subtitles.srt").write_text("\n".join(subtitles), encoding="utf-8")
 
     final = job_dir / "final.mp4"
-    subprocess.run(build_motion_ffmpeg_command(images, durations, voice, final), check=True, capture_output=True)
+    clips = generate_motion_clips(plan.video_provider, images, plan.scenes, durations, job_dir / "motion_clips")
+    command = build_clip_concat_command(clips, voice, final) if clips else build_motion_ffmpeg_command(images, durations, voice, final)
+    subprocess.run(command, check=True, capture_output=True)
     return final, media_duration(final)
 
 
@@ -742,6 +849,7 @@ def quality_control(plan: VideoPlan, research: ResearchBrief, fact_check: FactCh
         [asdict(scene) for scene in plan.scenes],
         research.to_dict(),
         plan.target_duration_seconds,
+        plan.audio_mode,
     )
     score -= guard["penalty"]
     issues.extend(guard["issues"])
@@ -774,6 +882,8 @@ def quality_control(plan: VideoPlan, research: ResearchBrief, fact_check: FactCh
         "source_count": len(research.sources),
         "ai_images_enabled": bool(os.getenv("OPENAI_API_KEY")) and ENABLE_AI_IMAGES,
         "script_provider": plan.provider,
+        "audio_mode": plan.audio_mode,
+        "video_provider": plan.video_provider,
         "target_duration_seconds": plan.target_duration_seconds,
         "content_guard": guard,
     }
@@ -800,6 +910,8 @@ def run(
     visual_style: str = "",
     character_description: str = "",
     character_image_url: str = "",
+    audio_mode: str = "",
+    video_provider: str = "",
 ) -> dict[str, Any]:
     job_id = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{slugify(topic)}"
     job_dir = OUTPUT_DIR / job_id
@@ -813,6 +925,10 @@ def run(
         character_description,
     )
     plan.character_image_url = character_image_url
+    requested_audio_mode = (audio_mode or os.getenv("VIDEO_AUDIO_MODE", "narrated")).strip()
+    requested_video_provider = (video_provider or os.getenv("VIDEO_PROVIDER", "kenburns")).strip()
+    plan.audio_mode = requested_audio_mode if requested_audio_mode in {"narrated", "silent_animation"} else "narrated"
+    plan.video_provider = requested_video_provider if requested_video_provider in {"seedance2_fast", "veo", "kenburns"} else "kenburns"
     # Download character reference for visual consistency
     character_ref = None
     if character_image_url:
@@ -857,6 +973,8 @@ if __name__ == "__main__":
     parser.add_argument("--character", default="", help="Mô tả nhân vật/host nhất quán")
     parser.add_argument("--character-image", default="", help="URL ảnh reference nhân vật để giữ nhất quán")
     parser.add_argument("--generate-character", action="store_true", help="Chỉ tạo ảnh character reference rồi thoát")
+    parser.add_argument("--audio-mode", choices=["narrated", "silent_animation"], default=os.getenv("VIDEO_AUDIO_MODE", "narrated"))
+    parser.add_argument("--video-provider", choices=["seedance2_fast", "veo", "kenburns"], default=os.getenv("VIDEO_PROVIDER", "kenburns"))
     args = parser.parse_args()
     try:
         if args.generate_character:
@@ -867,7 +985,15 @@ if __name__ == "__main__":
             else:
                 print("CHARACTER_IMAGE_FAILED", flush=True)
                 sys.exit(1)
-        result = run(args.topic, args.duration, args.visual_style, args.character, args.character_image)
+        result = run(
+            args.topic,
+            args.duration,
+            args.visual_style,
+            args.character,
+            args.character_image,
+            args.audio_mode,
+            args.video_provider,
+        )
         metadata = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         print(f"VIDEO_METADATA_B64={base64.urlsafe_b64encode(metadata).decode('ascii')}", flush=True)
         print(f"VIDEO_READY={result['video_url']}", flush=True)

@@ -13,6 +13,9 @@ import vn.techflow.manager.auth.AuthService;
 import vn.techflow.manager.auth.UserRole;
 import vn.techflow.manager.task.TaskService;
 import vn.techflow.manager.task.WorkTask;
+import vn.techflow.manager.task.TaskStatus;
+
+import java.util.List;
 
 import java.time.LocalDateTime;
 
@@ -66,6 +69,26 @@ public class PublicationService {
     @Transactional
     public void delete(Long id, Authentication authentication) { repository.delete(accessible(id, authentication)); }
 
+    @Transactional
+    public PublicationResponse approve(Long id, PublicationApprovalRequest request, Authentication authentication) {
+        if (!request.reviewed()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cần xác nhận đã xem video và kiểm tra nguồn");
+        }
+        Publication item = accessible(id, authentication);
+        WorkTask task = item.getTask();
+        if (task.getStatus() != TaskStatus.DRAFT_REQUIRES_REVIEW && task.getStatus() != TaskStatus.DONE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Video phải được dựng xong trước khi duyệt lịch xuất bản");
+        }
+        if (task.getOutputPath() == null || task.getOutputPath().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Video chưa có file đầu ra");
+        }
+        task.setStatus(TaskStatus.DONE);
+        item.setStatus(PublicationStatus.READY);
+        item.setNote("Đã được người dùng review. Hãy mở Video Studio để xác nhận gửi lên " + item.getPlatform() + ".");
+        return PublicationResponse.from(repository.save(item));
+    }
+
     @Transactional(readOnly = true)
     public Publication getAccessibleEntity(Long id, Authentication authentication) {
         return accessible(id, authentication);
@@ -73,7 +96,7 @@ public class PublicationService {
 
     @Transactional
     public PublicationResponse recordTikTokSubmission(WorkTask task, String publishId) {
-        Publication item = new Publication();
+        Publication item = reusablePlan(task, Platform.TIKTOK);
         item.setTask(task);
         item.setPlatform(Platform.TIKTOK);
         item.setStatus(PublicationStatus.PROCESSING);
@@ -84,13 +107,19 @@ public class PublicationService {
 
     @Transactional
     public PublicationResponse recordYouTubeSubmission(WorkTask task, String videoId) {
-        Publication item = new Publication();
+        Publication item = reusablePlan(task, Platform.YOUTUBE);
         item.setTask(task);
         item.setPlatform(Platform.YOUTUBE);
         item.setStatus(PublicationStatus.PROCESSING);
         item.setExternalId(videoId);
         item.setNote("YouTube đang xử lý video sau khi người dùng đã xem và xác nhận upload.");
         return PublicationResponse.from(repository.save(item));
+    }
+
+    private Publication reusablePlan(WorkTask task, Platform platform) {
+        return repository.findFirstByTaskIdAndPlatformAndStatusInOrderByCreatedAtAsc(
+                task.getId(), platform, List.of(PublicationStatus.PENDING, PublicationStatus.READY))
+                .orElseGet(Publication::new);
     }
 
     @Transactional

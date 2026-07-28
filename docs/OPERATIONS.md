@@ -51,7 +51,7 @@ Checklist:
 - Anonymous `/api/campaigns` trả 401.
 - User thường vào `/admin` bị chuyển về `/`.
 - Swagger có admin dashboard, Series Planner, produce-next và YouTube upload.
-- Flyway chạy V6.
+- Flyway chạy đến V8.
 - React asset mới trả 200.
 
 ## Recovery
@@ -60,3 +60,15 @@ Checklist:
 - AI provider lỗi: Gemini → OpenAI → offline planner.
 - Research lỗi: worker ghi rõ offline và Content Guard chặn “ready for review”.
 - Upload social lỗi: publication không được đánh dấu published; video draft vẫn trên Cloudinary.
+
+## Review queue, Research Notebook và feedback
+
+- `PENDING`: đã có lịch nhưng chủ sở hữu chưa review video.
+- `READY`: chủ sở hữu đã xem file và nguồn; bước tiếp theo là mở Video Studio để xác nhận cấu hình nền tảng.
+- `PROCESSING`: TikTok hoặc YouTube đã nhận lượt gửi do người dùng xác nhận.
+- `PUBLISHED`: nền tảng đích đã báo hoàn tất.
+- Thời gian lên lịch không bao giờ bỏ qua review; scheduler chỉ tạo draft.
+- Research Notebook lấy dữ kiện từ `research_json` và chỉ trả task thuộc user hiện tại.
+- Mỗi user có một đánh giá 1–5 sao trên mỗi video; gửi lại sẽ cập nhật bản cũ.
+- Admin xem phân bố và nhận xét tại **Admin → Phản hồi video**.
+- Render Blueprint giới hạn production ở 8 nguồn, 8 cảnh và 8 ảnh AI mỗi job. Có thể giảm khi tài nguyên hoặc chi phí bị giới hạn.

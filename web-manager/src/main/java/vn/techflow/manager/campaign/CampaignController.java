@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import vn.techflow.manager.task.WorkTask;
 
 import java.util.List;
@@ -33,6 +34,12 @@ public class CampaignController {
         return service.search(query, page, size, authentication);
     }
 
+    @Operation(summary = "Chi tiết campaign")
+    @GetMapping("/{id}")
+    public Campaign get(@PathVariable Long id, Authentication authentication) {
+        return service.get(id, authentication);
+    }
+
     @Operation(summary = "Tạo campaign hoặc series")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -57,6 +64,23 @@ public class CampaignController {
     @PostMapping("/{id}/plan")
     public Campaign plan(@PathVariable Long id, Authentication authentication) {
         return service.planSeries(id, authentication);
+    }
+
+    @Operation(summary = "Tạo lại ảnh reference nhân vật bằng AI")
+    @PostMapping("/{id}/generate-character")
+    public Campaign generateCharacter(@PathVariable Long id,
+                                      @Valid @RequestBody CharacterGenerationRequest request,
+                                      Authentication authentication) {
+        return service.generateCharacter(id, request, authentication);
+    }
+
+    @Operation(summary = "Upload ảnh reference nhân vật thủ công lên Cloudinary")
+    @PostMapping("/{id}/character-image")
+    public Campaign uploadCharacter(@PathVariable Long id,
+                                    @RequestParam("file") MultipartFile file,
+                                    @RequestParam(defaultValue = "") String description,
+                                    Authentication authentication) {
+        return service.uploadCharacter(id, file, description, authentication);
     }
 
     @Operation(summary = "Sản xuất tập TODO kế tiếp thành bản nháp cần duyệt")

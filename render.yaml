@@ -54,7 +54,11 @@ services:
       - key: ENABLE_AI_IMAGES
         value: "true"
       - key: MAX_AI_IMAGES
-        value: "6"
+        value: "8"
+      - key: MAX_SCENES
+        value: "8"
+      - key: RESEARCH_MAX_SOURCES
+        value: "8"
       - key: CLOUDINARY_URL
         sync: false
       - key: TIKTOK_CLIENT_KEY

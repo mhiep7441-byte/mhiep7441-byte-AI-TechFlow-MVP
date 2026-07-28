@@ -23,6 +23,7 @@ def assess_content(
     scenes: list[dict[str, Any]],
     research: dict[str, Any],
     target_duration_seconds: int,
+    mode: str = "narrated",
 ) -> dict[str, Any]:
     issues: list[str] = []
     blocking: list[str] = []
@@ -54,11 +55,12 @@ def assess_content(
     if len(scenes) < required_scenes:
         issues.append(f"Cần ít nhất {required_scenes} cảnh cho thời lượng mục tiêu")
 
+    silent_mode = mode == "silent_animation"
     unsupported_numeric_scenes = []
     for index, scene in enumerate(scenes, 1):
         narration = str(scene.get("narration", ""))
         source_ids = {str(value) for value in scene.get("source_ids", [])}
-        if re.search(r"\d", narration) and not (source_ids & valid_source_ids):
+        if narration and re.search(r"\d", narration) and not (source_ids & valid_source_ids):
             unsupported_numeric_scenes.append(index)
     if unsupported_numeric_scenes:
         blocking.append(

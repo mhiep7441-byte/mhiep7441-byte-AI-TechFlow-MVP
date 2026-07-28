@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowRight, BarChart3, Bot, CalendarClock, CheckCircle2, CirclePlay, Film, Gauge,
-  Layers3, Send, ShieldCheck, Sparkles, UserRound, UsersRound,
+  ArrowRight, BarChart3, BookOpen, Bot, CalendarClock, CheckCircle2, CirclePlay, Copy,
+  ExternalLink, Film, Gauge, Layers3, Search, Send, ShieldCheck, Sparkles, Star,
+  UserRound, UsersRound,
 } from 'lucide-react';
 import { api } from './api';
 import { useAuth } from './AuthContext';
@@ -131,4 +132,62 @@ export function YouTubePublishModal({ task, onClose, onPublished }) {
     finally { setBusy(false); }
   };
   return <div className="modal-backdrop"><form className="modal youtube-modal" onSubmit={submit}><div className="modal-head"><div><span>YOUTUBE UPLOAD</span><h2>Duyệt & upload video</h2></div><button type="button" onClick={onClose}>×</button></div>{error && <div className="form-error">{error}</div>}<div className="creator-card"><div><b>Review-first upload</b><small>Project chưa audit có thể bị YouTube giới hạn video ở chế độ private.</small></div><CirclePlay /></div><label>Tiêu đề<input required maxLength="100" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label><label>Mô tả<textarea rows="6" maxLength="5000" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label><div className="form-grid"><label>Quyền riêng tư<select value={form.privacyStatus} onChange={(event) => setForm({ ...form, privacyStatus: event.target.value })}><option value="private">Riêng tư</option><option value="unlisted">Không công khai</option><option value="public">Công khai</option></select></label><label className="inline-check"><input type="checkbox" checked={form.madeForKids} onChange={(event) => setForm({ ...form, madeForKids: event.target.checked })} /> Nội dung dành cho trẻ em</label></div><label className="consent-check"><input type="checkbox" checked={form.consent} onChange={(event) => setForm({ ...form, consent: event.target.checked })} /><span><b>Tôi đã xem video, kiểm tra nguồn và đồng ý upload lên YouTube.</b><small>Đây là hành động chủ động; hệ thống không tự xuất bản video.</small></span></label><button className="button dark full" disabled={busy || !form.consent}>{busy ? 'Đang upload...' : 'Xác nhận upload'} <ArrowRight /></button></form></div>;
+}
+
+export function VideoFeedbackWidget({ task }) {
+  const aspectOptions = ['Nội dung đúng', 'Hình ảnh đẹp', 'Giọng đọc tốt', 'Chuyển cảnh mượt', 'Dễ sử dụng'];
+  const [form, setForm] = useState({ rating: 0, aspects: [], comment: '' });
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => {
+    api(`/api/tasks/${task.id}/feedback`).then((value) => {
+      if (value) setForm({ rating: value.rating, aspects: value.aspects ? value.aspects.split(',') : [], comment: value.comment || '' });
+    }).catch(() => {});
+  }, [task.id]);
+  const toggle = (aspect) => setForm((current) => ({
+    ...current,
+    aspects: current.aspects.includes(aspect)
+      ? current.aspects.filter((value) => value !== aspect)
+      : [...current.aspects, aspect],
+  }));
+  const submit = async (event) => {
+    event.preventDefault(); setError(''); setMessage('');
+    try {
+      await api(`/api/tasks/${task.id}/feedback`, {
+        method: 'PUT',
+        body: { rating: form.rating, aspects: form.aspects.join(','), comment: form.comment },
+      });
+      setMessage('Cảm ơn bạn. Đánh giá này sẽ xuất hiện trong Admin Feedback.');
+    } catch (reason) { setError(reason.message); }
+  };
+  return <section className="feedback-widget"><div><span>YOUR FEEDBACK</span><h3>Video này đạt kỳ vọng chưa?</h3><p>AI TechFlow dùng đánh giá này để tìm phần cần cải thiện.</p></div><form onSubmit={submit}>{error && <div className="form-error">{error}</div>}{message && <div className="alert success">{message}</div>}<div className="star-picker" aria-label="Mức độ hài lòng">{[1,2,3,4,5].map((star) => <button type="button" aria-label={`${star} sao`} className={form.rating >= star ? 'active' : ''} onClick={() => setForm({ ...form, rating: star })} key={star}><Star /></button>)}</div><div className="feedback-aspects">{aspectOptions.map((aspect) => <button type="button" className={form.aspects.includes(aspect) ? 'active' : ''} onClick={() => toggle(aspect)} key={aspect}>{aspect}</button>)}</div><textarea rows="3" maxLength="2000" placeholder="Điều gì cần sửa ở nội dung, hình ảnh hoặc trải nghiệm?" value={form.comment} onChange={(event) => setForm({ ...form, comment: event.target.value })} /><button className="button dark" disabled={!form.rating}>Gửi đánh giá <ArrowRight /></button></form></section>;
+}
+
+export function ResearchNotebookPage() {
+  const [entries, setEntries] = useState(null);
+  const [query, setQuery] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => { api('/api/research/notebook?limit=100').then(setEntries).catch((reason) => setError(reason.message)); }, []);
+  if (!entries && !error) return <Loading />;
+  const rows = (entries || []).filter((entry) =>
+    `${entry.title} ${entry.topic} ${entry.summary}`.toLowerCase().includes(query.toLowerCase()));
+  const copy = async (entry) => navigator.clipboard.writeText(
+    `${entry.title}\n${entry.summary}\n\n${(entry.sources || []).map((source) => source.url).join('\n')}`);
+  return <div className="page research-notebook"><section className="page-intro"><div><span>RESEARCH LIBRARY</span><h2>Notebook nguồn & kiến thức.</h2><p>Tập hợp research, claim và nguồn từ các video đã dựng để kiểm tra hoặc tái sử dụng ý tưởng.</p></div><Link className="button dark" to="/videos?new=1"><Sparkles /> Research video mới</Link></section>{error && <div className="alert error">{error}</div>}<section className="notebook-toolbar"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm chủ đề, video hoặc dữ kiện..." /><span>{rows.length} ghi chú</span></section><section className="notebook-grid">{rows.map((entry) => <article className="notebook-card" key={entry.taskId}><header><span className={entry.mode === 'offline' ? 'offline' : ''}>{entry.mode}</span><small>{entry.updatedAt?.slice(0, 10)}</small></header><h3>{entry.title}</h3><p>{entry.summary || entry.topic}</p><div className="notebook-score"><span><ShieldCheck /> {entry.factCheckStatus}</span><span><Gauge /> {entry.qualityScore ?? '—'}/100</span><span><ExternalLink /> {(entry.sources || []).length} nguồn</span></div><div className="notebook-sources">{(entry.sources || []).slice(0, 4).map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={`${source.id}-${index}`}><b>{source.title || source.publisher}</b><small>{source.publisher}</small><ExternalLink /></a>)}</div><footer><button onClick={() => copy(entry)}><Copy /> Copy research</button><Link to={`/videos/${entry.taskId}`}>Mở Video Studio <ArrowRight /></Link></footer></article>)}</section>{!rows.length && <div className="workspace-empty notebook-empty"><BookOpen /><b>Chưa có research phù hợp</b><span>Hãy dựng video có Research Agent để tạo ghi chú đầu tiên.</span></div>}</div>;
+}
+
+export function AdminFeedbackPage() {
+  const [summary, setSummary] = useState(null);
+  const [data, setData] = useState(null);
+  const [rating, setRating] = useState('');
+  const [page, setPage] = useState(0);
+  const [error, setError] = useState('');
+  const load = () => Promise.all([
+    api('/api/admin/feedback/summary'),
+    api(`/api/admin/feedback?page=${page}&size=20${rating ? `&rating=${rating}` : ''}`),
+  ]).then(([nextSummary, nextData]) => { setSummary(nextSummary); setData(nextData); })
+    .catch((reason) => setError(reason.message));
+  useEffect(load, [page, rating]);
+  if ((!summary || !data) && !error) return <Loading />;
+  return <div className="page admin-feedback"><section className="admin-heading"><div><span>VOICE OF CUSTOMER</span><h2>Feedback Analytics.</h2><p>Đọc đánh giá thật để ưu tiên sửa nội dung, hình ảnh và trải nghiệm sản xuất.</p></div><div className="feedback-average"><Star /><strong>{summary?.average || 0}</strong><span>/ 5<br />{summary?.total || 0} đánh giá</span></div></section>{error && <div className="alert error">{error}</div>}<section className="rating-distribution">{[5,4,3,2,1].map((star) => { const count = summary?.distribution?.[star] || 0; const percent = summary?.total ? count / summary.total * 100 : 0; return <button className={String(star) === rating ? 'active' : ''} onClick={() => { setRating(String(star) === rating ? '' : String(star)); setPage(0); }} key={star}><span>{star} <Star /></span><i><em style={{ width: `${percent}%` }} /></i><b>{count}</b></button>; })}</section><section className="feedback-list">{data?.content.map((item) => <article key={item.id}><div className="feedback-user"><span className="avatar">{item.ownerName.slice(0,1).toUpperCase()}</span><div><b>{item.ownerName}</b><small>{item.ownerEmail}</small></div></div><div><Link to={`/videos/${item.taskId}`}>{item.taskTitle} <ArrowRight /></Link><div className="feedback-stars">{[1,2,3,4,5].map((star) => <Star className={item.rating >= star ? 'active' : ''} key={star} />)}</div><p>{item.comment || 'Không có nhận xét chi tiết.'}</p><small>{item.aspects || 'Chưa chọn tiêu chí'} · {item.updatedAt?.replace('T', ' ').slice(0,16)}</small></div></article>)}</section>{data?.totalPages > 1 && <div className="pagination"><button disabled={page === 0} onClick={() => setPage(page - 1)}>Trước</button><span>Trang {page + 1}/{data.totalPages}</span><button disabled={page + 1 >= data.totalPages} onClick={() => setPage(page + 1)}>Sau</button></div>}</div>;
 }

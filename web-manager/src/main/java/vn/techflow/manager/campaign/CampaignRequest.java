@@ -14,5 +14,7 @@ public record CampaignRequest(
         CampaignCadence cadence,
         Boolean productionEnabled,
         java.time.LocalDateTime nextRunAt,
-        CampaignStatus status
+        CampaignStatus status,
+        String characterImageUrl,
+        String characterReferencePrompt
 ) {}

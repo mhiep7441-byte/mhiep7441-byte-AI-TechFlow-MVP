@@ -2,6 +2,7 @@
 
 ## Tài liệu hệ thống
 
+- [Giới thiệu dự án, SRS và ERD](docs/SRS-ERD.md)
 - [Kiến trúc, data model và pipeline](docs/ARCHITECTURE.md)
 - [User flow, role và acceptance criteria](docs/USER-FLOWS.md)
 - [Vận hành, YouTube OAuth và production QA](docs/OPERATIONS.md)

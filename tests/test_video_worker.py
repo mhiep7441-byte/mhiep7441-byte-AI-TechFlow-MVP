@@ -12,8 +12,8 @@ class VideoWorkerTests(unittest.TestCase):
         plan = video_worker.fallback_plan("AI cho lập trình viên")
 
         self.assertEqual("MỞ ĐẦU", plan.scenes[0].title)
-        self.assertIn("Linh sẽ tóm tắt", plan.scenes[0].narration)
-        self.assertEqual(5, len(plan.scenes))
+        self.assertIn("AI cho lập trình viên", plan.scenes[0].narration)
+        self.assertEqual(6, len(plan.scenes))
         self.assertTrue(all(scene.visual_prompt for scene in plan.scenes))
         self.assertTrue(all(scene.character_action for scene in plan.scenes))
 
@@ -46,6 +46,26 @@ class VideoWorkerTests(unittest.TestCase):
         self.assertIn("zoompan", filter_graph)
         self.assertIn("xfade=transition=fade", filter_graph)
         self.assertEqual("2:a:0", command[command.index("-map", command.index("-map") + 1) + 1])
+
+    def test_bgm_command_creates_synthetic_audio_track(self):
+        command = video_worker.build_bgm_command(Path("bgm.mp3"), 12.0)
+
+        self.assertEqual("ffmpeg", command[0])
+        self.assertTrue(any("anoisesrc" in part for part in command))
+        self.assertIn("sine=frequency=523:sample_rate=44100", command)
+        self.assertEqual("bgm.mp3", command[-1])
+
+    def test_seedance_provider_without_endpoint_falls_back_to_kenburns(self):
+        with patch.dict(os.environ, {"SEEDANCE2_IMAGE_TO_VIDEO_URL": "", "SEEDANCE2_API_KEY": ""}, clear=False):
+            clips = video_worker.generate_motion_clips(
+                "seedance2_fast",
+                [Path("scene.jpg")],
+                [video_worker.Scene("A", "", "A")],
+                [5.0],
+                Path("clips"),
+            )
+
+        self.assertEqual([], clips)
 
     def test_long_form_scene_limit_and_duration_are_bounded(self):
         self.assertEqual(6, video_worker.scene_limit(60))
