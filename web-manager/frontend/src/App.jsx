@@ -115,10 +115,7 @@ function AppShell() {
       : pathname.startsWith('/campaigns') ? 'Campaign & Series'
       : pathname.startsWith('/research') ? 'Research Notebook'
       : pathname.startsWith('/calendar') ? 'Lịch nội dung'
-        : pathname.startsWith('/profile') ? 'Hồ sơ người dùng'
-          : pathname === '/admin' ? 'Admin Dashboard'
-            : pathname.startsWith('/admin/feedback') ? 'Phản hồi người dùng'
-            : pathname.startsWith('/admin') ? 'Quản trị người dùng' : 'Workspace của tôi';
+        : pathname.startsWith('/profile') ? 'Hồ sơ người dùng' : 'Workspace của tôi';
   const doLogout = async () => { await logout(); navigate('/login'); };
   const close = () => setMobileOpen(false);
   return <div className="app-shell">
@@ -131,14 +128,45 @@ function AppShell() {
         <NavLink to="/research" onClick={close}><BookOpen /> Research Notebook</NavLink>
         <NavLink to="/calendar" onClick={close}><CalendarDays /> Lịch nội dung</NavLink>
         <NavLink to="/profile" onClick={close}><UserRound /> Hồ sơ & kết nối</NavLink>
-        {user.role === 'ADMIN' && <><div className="nav-section-label">ADMIN</div><NavLink to="/admin" end onClick={close}><Gauge /> Dashboard hệ thống</NavLink><NavLink to="/admin/users" onClick={close}><UsersRound /> Người dùng</NavLink><NavLink to="/admin/feedback" onClick={close}><Star /> Phản hồi video</NavLink></>}
       </nav>
       <div className="sidebar-note"><ShieldCheck /><div><b>Review-first</b><span>Không đăng khi chưa duyệt.</span></div></div>
       <div className="sidebar-user"><div className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</div><div><b>{user.displayName}</b><span>{user.role}</span></div><button onClick={doLogout} aria-label="Đăng xuất"><LogOut /></button></div>
     </aside>
     {mobileOpen && <button className="sidebar-backdrop" aria-label="Đóng menu" onClick={close} />}
     <div className="app-content">
-      <header className="topbar"><button className="menu-button" onClick={() => setMobileOpen(true)}><Menu /></button><div><span>WORKSPACE / {user.role}</span><h1>{pageTitle}</h1></div><div className="top-actions"><Link className="button outline" to="/videos"><Search /> Tìm video</Link><Link className="button dark" to="/videos?new=1"><Plus /> Tạo nội dung</Link></div></header>
+      <header className="topbar"><button className="menu-button" onClick={() => setMobileOpen(true)}><Menu /></button><div><span>WORKSPACE / {user.role}</span><h1>{pageTitle}</h1></div><div className="top-actions">{user.role === 'ADMIN' && <Link className="button outline" to="/admin"><Gauge /> Admin</Link>}<Link className="button outline" to="/videos"><Search /> Tìm video</Link><Link className="button dark" to="/videos?new=1"><Plus /> Tạo nội dung</Link></div></header>
+      <Outlet />
+    </div>
+  </div>;
+}
+
+
+function AdminShell() {
+  const { user, logout } = useAuth();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const pageTitle = pathname.startsWith('/admin/users') ? 'Quản lý người dùng'
+    : pathname.startsWith('/admin/feedback') ? 'Phản hồi video'
+      : 'Admin Dashboard';
+  const doLogout = async () => { await logout(); navigate('/login'); };
+  const close = () => setMobileOpen(false);
+  return <div className="app-shell admin-shell">
+    <aside className={mobileOpen ? 'sidebar open admin-sidebar' : 'sidebar admin-sidebar'}>
+      <Link className="brand" to="/admin" onClick={close}><span>TF</span><div>Admin<small>CONTROL CENTER</small></div></Link>
+      <nav>
+        <NavLink to="/admin" end onClick={close}><Gauge /> Tổng quan</NavLink>
+        <NavLink to="/admin/users" onClick={close}><UsersRound /> Người dùng</NavLink>
+        <NavLink to="/admin/feedback" onClick={close}><Star /> Phản hồi video</NavLink>
+        <div className="nav-section-label">WORKSPACE</div>
+        <NavLink to="/" onClick={close}><LayoutDashboard /> Quay lại workspace</NavLink>
+      </nav>
+      <div className="sidebar-note"><ShieldCheck /><div><b>Admin only</b><span>Quản trị tách khỏi giao diện user.</span></div></div>
+      <div className="sidebar-user"><div className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</div><div><b>{user.displayName}</b><span>{user.role}</span></div><button onClick={doLogout} aria-label="Đăng xuất"><LogOut /></button></div>
+    </aside>
+    {mobileOpen && <button className="sidebar-backdrop" aria-label="Đóng menu" onClick={close} />}
+    <div className="app-content">
+      <header className="topbar admin-topbar"><button className="menu-button" onClick={() => setMobileOpen(true)}><Menu /></button><div><span>ADMIN / {user.role}</span><h1>{pageTitle}</h1></div><div className="top-actions"><Link className="button outline" to="/"><LayoutDashboard /> Workspace</Link></div></header>
       <Outlet />
     </div>
   </div>;
@@ -587,8 +615,8 @@ export default function App() {
       <Route path="research" element={<ResearchNotebookPage />} />
       <Route path="calendar" element={<CalendarPage />} />
       <Route path="profile" element={<ProfilePage />} />
-      <Route element={<Protected admin />}><Route path="admin" element={<AdminDashboardPage />} /><Route path="admin/users" element={<AdminUsersPage />} /><Route path="admin/feedback" element={<AdminFeedbackPage />} /></Route>
     </Route></Route>
+    <Route element={<Protected admin />}><Route element={<AdminShell />}><Route path="admin" element={<AdminDashboardPage />} /><Route path="admin/users" element={<AdminUsersPage />} /><Route path="admin/feedback" element={<AdminFeedbackPage />} /></Route></Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;
 }
