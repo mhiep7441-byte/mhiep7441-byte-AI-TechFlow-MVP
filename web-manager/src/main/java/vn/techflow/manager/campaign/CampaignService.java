@@ -106,6 +106,12 @@ public class CampaignService {
         return accessible(id, authentication);
     }
 
+    @Transactional(readOnly = true)
+    public List<WorkTask> listEpisodes(Long id, Authentication authentication) {
+        Campaign campaign = accessible(id, authentication);
+        return tasks.findByCampaignIdOrderByEpisodeNumberAsc(campaign.getId());
+    }
+
     @Transactional
     public Campaign generateCharacter(Long id, CharacterGenerationRequest request, Authentication authentication) {
         Campaign campaign = accessible(id, authentication);

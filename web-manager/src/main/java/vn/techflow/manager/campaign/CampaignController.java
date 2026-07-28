@@ -40,6 +40,12 @@ public class CampaignController {
         return service.get(id, authentication);
     }
 
+    @Operation(summary = "Danh sách tập đã được AI lập cho campaign")
+    @GetMapping("/{id}/episodes")
+    public List<WorkTask> listEpisodes(@PathVariable Long id, Authentication authentication) {
+        return service.listEpisodes(id, authentication);
+    }
+
     @Operation(summary = "Tạo campaign hoặc series")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

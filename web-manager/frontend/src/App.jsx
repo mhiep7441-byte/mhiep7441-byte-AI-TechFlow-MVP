@@ -226,13 +226,23 @@ function TaskModal({ onClose, onCreated }) {
   const [form, setForm] = useState(taskDefaults);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const autoFill = () => {
+    const topic = form.topic || form.title || 'Bobo Adventure';
+    setForm({
+      ...form,
+      title: form.title || `${topic} — Tập 1`,
+      topic: topic,
+      description: `Video tự động từ chủ đề "${topic}". AI tự biên soạn 18 cảnh quay, hình ảnh và âm thanh.`,
+      targetDurationSeconds: 180,
+    });
+  };
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setError('');
     try { const created = await api('/api/tasks', { method: 'POST', body: { ...form, dueDate: form.dueDate || null } }); onCreated(created); }
     catch (reason) { setError(reason.message); }
     finally { setBusy(false); }
   };
-  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW CONTENT</span><h2>Tạo video mới</h2></div><button type="button" onClick={onClose}><X /></button></div>{error && <div className="form-error">{error}</div>}<label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: 5 công cụ AI cho lập trình viên" /></label><label>Chủ đề video<input required maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></label><label>Mô tả<textarea rows="4" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><div className="form-grid"><label>Thời lượng mục tiêu<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: Number(e.target.value) })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút / 18 cảnh</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div><div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Editorial motion, neon..." /></label><label>Nhân vật / host<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="Nữ host công nghệ, áo xanh..." /></label></div><RenderProfileFields form={form} setForm={setForm} /><label>Hạn hoàn thành<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label><button className="button dark full" disabled={busy}>{busy ? 'Đang lưu...' : 'Tạo công việc'} <ArrowRight /></button></form></div>;
+  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW CONTENT</span><h2>Tạo video mới</h2></div><button type="button" onClick={onClose}><X /></button></div>{error && <div className="form-error">{error}</div>}<div style={{ background: '#1e1c38', padding: '10px 14px', borderRadius: '8px', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #4f46e5' }}><span>⚡ <b>Auto-fill bằng AI:</b> Chỉ cần nhập tên chủ đề bên dưới</span><button type="button" className="button light" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={autoFill}>Tự động điền</button></div><label>Ý tưởng / Chủ đề video<input required maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value, title: form.title || e.target.value })} placeholder="Chỉ cần nhập 1 câu: ví dụ Bobo Adventure, Chó cảnh sát..." /></label><label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: Bobo Adventure - Tập 1" /></label><label>Mô tả (Không bắt buộc)<textarea rows="2" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="AI tự sinh nếu để rỗng..." /></label><div className="form-grid"><label>Thời lượng mục tiêu<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: Number(e.target.value) })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút / 18 cảnh</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div><div className="form-grid"><label>Phong cách hình ảnh (Tùy chọn)<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="AI tự nghĩ nếu để trống..." /></label><label>Nhân vật / host (Tùy chọn)<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="AI tự nghĩ nếu để trống..." /></label></div><RenderProfileFields form={form} setForm={setForm} /><label>Hạn hoàn thành<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label><button className="button dark full" disabled={busy}>{busy ? 'Đang tạo...' : 'Tạo video ngay'} <ArrowRight /></button></form></div>;
 }
 
 function VideosPage() {
@@ -393,37 +403,46 @@ export function TikTokPublishModal({ task, onClose, onPublished }) {
 }
 
 function CampaignModal({ onClose, onCreated }) {
+  const [idea, setIdea] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [form, setForm] = useState(campaignDefaults);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setError('');
     try {
+      const normalizedIdea = idea.trim();
       const created = await api('/api/campaigns', {
         method: 'POST',
         body: {
           ...form,
+          name: form.name.trim() || normalizedIdea.slice(0, 160),
+          theme: normalizedIdea,
+          description: form.description.trim() || `Series do AI lập từ ý tưởng: ${normalizedIdea}`,
           episodeCount: Number(form.episodeCount),
           targetDurationSeconds: Number(form.targetDurationSeconds),
           nextRunAt: form.productionEnabled && form.nextRunAt ? form.nextRunAt : null,
         },
       });
-      onCreated(created);
+      const episodes = await api(`/api/campaigns/${created.id}/ai-series`, { method: 'POST' });
+      onCreated(created, episodes);
     } catch (reason) { setError(reason.message); }
     finally { setBusy(false); }
   };
   return <div className="modal-backdrop"><form className="modal campaign-modal" onSubmit={submit}>
-    <div className="modal-head"><div><span>NEW CAMPAIGN</span><h2>Xây series nhiều tập</h2></div><button type="button" onClick={onClose}><X /></button></div>
+    <div className="modal-head"><div><span>ONE-CLICK SERIES</span><h2>Tạo campaign bằng AI</h2></div><button type="button" onClick={onClose}><X /></button></div>
     {error && <div className="form-error">{error}</div>}
-    <label>Tên campaign<input required maxLength="160" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ví dụ: 7 ngày làm chủ AI Agent" /></label>
-    <label>Chủ đề xuyên suốt<input required maxLength="500" value={form.theme} onChange={(e) => setForm({ ...form, theme: e.target.value })} placeholder="AI Agent từ nền tảng đến ứng dụng thực tế" /></label>
-    <label>Mô tả series<textarea rows="3" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
-    <label>Khán giả mục tiêu<input maxLength="160" value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value })} placeholder="Ví dụ: Trẻ em 7-11 tuổi và phụ huynh" /></label>
-    <div className="form-grid"><label>Số tập<input type="number" min="1" max="30" value={form.episodeCount} onChange={(e) => setForm({ ...form, episodeCount: e.target.value })} /></label><label>Thời lượng mỗi tập<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: e.target.value })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label></div>
-    <div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Cinematic editorial, lilac..." /></label><label>Nhân vật xuyên suốt<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="Host nữ kỹ sư AI..." /></label></div>
-    <RenderProfileFields form={form} setForm={setForm} />
-    <div className="automation-box"><div><Bot /><span><b>Lịch sản xuất bản nháp</b><small>Scheduler chỉ dựng tập kế tiếp; không tự đăng TikTok/YouTube.</small></span><input type="checkbox" checked={form.productionEnabled} onChange={(e) => setForm({ ...form, productionEnabled: e.target.checked, cadence: e.target.checked && form.cadence === 'MANUAL' ? 'DAILY' : form.cadence })} /></div>{form.productionEnabled && <div className="form-grid"><label>Nhịp sản xuất<select value={form.cadence} onChange={(e) => setForm({ ...form, cadence: e.target.value })}><option value="HOURLY">Mỗi giờ</option><option value="DAILY">Mỗi ngày</option></select></label><label>Bắt đầu lúc<input type="datetime-local" value={form.nextRunAt} onChange={(e) => setForm({ ...form, nextRunAt: e.target.value })} /></label></div>}</div>
-    <button className="button dark full" disabled={busy}>{busy ? 'Đang tạo...' : 'Tạo campaign'} <ArrowRight /></button>
+    <label>Ý tưởng series<textarea autoFocus required rows="5" maxLength="500" value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="Ví dụ: Series chó cảnh sát Bobo giúp trẻ học kỹ năng an toàn, mỗi tập là một nhiệm vụ mới." /></label>
+    <div className="one-click-note"><Sparkles /><div><b>AI tự làm phần còn lại</b><span>Tạo Campaign, Series Bible và {form.episodeCount} tập nháp nội dung. Bạn chỉ cần chọn tập và bấm Accept để dựng video.</span></div></div>
+    <button type="button" className="advanced-toggle" onClick={() => setShowAdvanced(!showAdvanced)}><Settings2 /> {showAdvanced ? 'Ẩn tùy chỉnh' : 'Tùy chỉnh nâng cao (không bắt buộc)'}</button>
+    {showAdvanced && <div className="advanced-campaign-fields">
+      <label>Tên campaign<input maxLength="160" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Để trống để AI dùng tên ý tưởng" /></label>
+      <label>Khán giả mục tiêu<input maxLength="160" value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value })} placeholder="Ví dụ: Trẻ em 7-11 tuổi và phụ huynh" /></label>
+      <div className="form-grid"><label>Số tập<input type="number" min="1" max="30" value={form.episodeCount} onChange={(e) => setForm({ ...form, episodeCount: e.target.value })} /></label><label>Thời lượng mỗi tập<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: e.target.value })}><option value="60">60 giây / khoảng 6 cảnh</option><option value="90">90 giây / khoảng 9 cảnh</option><option value="180">3 phút / khoảng 18 cảnh</option></select></label></div>
+      <div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Cinematic 3D animation..." /></label><label>Nhân vật xuyên suốt<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="Chó cảnh sát Bobo..." /></label></div>
+      <RenderProfileFields form={form} setForm={setForm} />
+    </div>}
+    <button className="button dark full" disabled={busy || !idea.trim()}>{busy ? 'AI đang lập campaign và các tập...' : 'Generate Campaign'} <WandSparkles /></button>
   </form></div>;
 }
 
@@ -506,9 +525,9 @@ function CampaignsPage() {
       <Link to={`/campaigns/${campaign.id}`}><h3>{campaign.name}</h3></Link><p>{campaign.description || campaign.theme}</p><div className="campaign-theme">{campaign.theme}</div>
       <div className="campaign-metrics"><span><Layers3 /><b>{campaign.episodeCount}</b><small>TẬP</small></span><span><Clock3 /><b>{campaign.targetDurationSeconds}s</b><small>MỖI TẬP</small></span><span><UserRound /><b>{campaign.ownerName}</b><small>CHỦ SỞ HỮU</small></span></div>
       <div className="campaign-plan-state"><span className={campaign.seriesPlanJson ? 'ready' : ''}><Bot /> {campaign.seriesPlanJson ? 'Series Bible đã có' : 'Chưa tạo Series Bible'}</span><span><CalendarDays /> {campaign.productionEnabled ? `${campaign.cadence} · ${campaign.nextRunAt?.replace('T', ' ').slice(0, 16)}` : 'Lịch đang tắt'}</span></div>
-      <div className="campaign-action-grid"><button className="primary" disabled={busyCampaign === campaign.id} onClick={() => generateAiSeries(campaign)}><Bot /> AI t?o series</button><button disabled={busyCampaign === campaign.id} onClick={() => generateEpisodes(campaign)}><Layers3 /> T?o t?p th? c?ng</button><button disabled={busyCampaign === campaign.id} onClick={() => planSeries(campaign)}><BookOpen /> Ch? l?p Bible</button><button disabled={busyCampaign === campaign.id || campaign.status === 'COMPLETED'} onClick={() => toggleAutomation(campaign)}><CalendarDays /> {campaign.productionEnabled ? 'T?m d?ng l?ch' : 'B?t l?ch m?i ng?y'}</button><button className="primary" disabled={busyCampaign === campaign.id} onClick={() => produceNext(campaign)}><WandSparkles /> S?n xu?t t?p k?</button></div>
+      <div className="campaign-action-grid"><Link className="primary" to={`/campaigns/${campaign.id}`}><Check /> Chọn campaign & duyệt tập</Link><button disabled={busyCampaign === campaign.id} onClick={() => generateAiSeries(campaign)}><RefreshCw /> Lập lại nội dung AI</button><button disabled={busyCampaign === campaign.id || campaign.status === 'COMPLETED'} onClick={() => toggleAutomation(campaign)}><CalendarDays /> {campaign.productionEnabled ? 'Tạm dừng lịch' : 'Bật lịch tạo draft'}</button></div>
     </article>)}</section><Pagination page={data.number} totalPages={data.totalPages} onChange={setPage} /></> : <EmptyState icon={Layers3} title="Chưa có campaign" description="Tạo series đầu tiên để sản xuất nội dung đều đặn." action={<button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo campaign</button>} />}
-    {showCreate && <CampaignModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
+    {showCreate && <CampaignModal onClose={() => setShowCreate(false)} onCreated={(campaign) => { setShowCreate(false); navigate(`/campaigns/${campaign.id}`); }} />}
   </div>;
 }
 
@@ -516,14 +535,16 @@ function CampaignDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState(null);
+  const [episodes, setEpisodes] = useState([]);
   const [description, setDescription] = useState('');
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState('');
   const load = useCallback(() => {
-    api(`/api/campaigns/${id}`).then((row) => {
+    Promise.all([api(`/api/campaigns/${id}`), api(`/api/campaigns/${id}/episodes`)]).then(([row, plannedEpisodes]) => {
       setCampaign(row);
+      setEpisodes(plannedEpisodes);
       setDescription(row.characterReferencePrompt || row.characterDescription || '');
     }).catch((reason) => setError(reason.message));
   }, [id]);
@@ -538,6 +559,15 @@ function CampaignDetailPage() {
       });
       setCampaign(updated);
       setMessage('Da tao lai anh nhan vat. Cac tap TODO/FAILED se dung reference moi.');
+    } catch (reason) { setError(reason.message); }
+    finally { setBusy(''); }
+  };
+  const acceptEpisode = async (episode) => {
+    setError(''); setMessage(''); setBusy(`episode-${episode.id}`);
+    try {
+      await api(`/api/tasks/${episode.id}/generate`, { method: 'POST' });
+      setMessage(`Đã accept “${episode.title}”. Worker đang dựng nhiều cảnh; video hoàn tất sẽ ở trạng thái Chờ duyệt.`);
+      await load();
     } catch (reason) { setError(reason.message); }
     finally { setBusy(''); }
   };
@@ -558,7 +588,22 @@ function CampaignDetailPage() {
   return <div className="page campaign-detail-page">
     <button className="back-link" onClick={() => navigate('/campaigns')}><ArrowLeft /> Quay lai Campaign</button>
     {error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}
-    {campaign && <><section className="page-intro"><div><span>CHARACTER STUDIO</span><h2>{campaign.name}</h2><p>{campaign.theme}</p></div><span className={`campaign-status ${campaign.status}`}>{campaign.status}</span></section>
+    {campaign && <><section className="page-intro"><div><span>CAMPAIGN REVIEW</span><h2>{campaign.name}</h2><p>{campaign.theme}</p></div><span className={`campaign-status ${campaign.status}`}>{campaign.status}</span></section>
+      <section className="pipeline-truth">
+        <article><Bot /><div><b>Nội dung</b><span>Gemini lập Series Bible và nội dung từng tập. Research Agent kiểm tra nguồn khi dựng.</span></div></article>
+        <article><Image /><div><b>Nhiều cảnh, không phải một ảnh</b><span>{campaign.targetDurationSeconds}s dự kiến khoảng {Math.max(4, Math.ceil(campaign.targetDurationSeconds / 10))} cảnh. AI ảnh thiếu cấu hình sẽ fallback sang visual offline cho từng cảnh.</span></div></article>
+        <article><Film /><div><b>Google Flow / Veo</b><span>Google Login không phải Veo. Chỉ dùng Veo khi server có endpoint và API key riêng; nếu chưa có sẽ dùng Ken Burns + xfade.</span></div></article>
+      </section>
+      <section className="episode-review">
+        <div className="section-heading"><div><span>AI EPISODE PLAN</span><h2>Chọn tập rồi Accept để dựng.</h2><p>Nội dung được tạo trước để bạn xem; không tự đăng và không bỏ qua bước review.</p></div></div>
+        <div className="episode-list">{episodes.map((episode) => <article key={episode.id}>
+          <span className="episode-number">{String(episode.episodeNumber).padStart(2, '0')}</span>
+          <div><small>{statusLabels[episode.status] || episode.status}</small><h3>{episode.title}</h3><p>{episode.description || episode.topic}</p><em>{episode.targetDurationSeconds}s · {Math.max(4, Math.ceil(episode.targetDurationSeconds / 10))} cảnh dự kiến</em></div>
+          {['TODO', 'FAILED'].includes(episode.status)
+            ? <button className="button dark" disabled={busy === `episode-${episode.id}`} onClick={() => acceptEpisode(episode)}>{busy === `episode-${episode.id}` ? 'Đang gửi worker...' : 'Accept & tạo video'} <WandSparkles /></button>
+            : <Link className="button outline" to={`/videos/${episode.id}`}>Mở Video Studio <ArrowRight /></Link>}
+        </article>)}</div>
+      </section>
       <section className="character-studio">
         <article className="character-preview">
           <div className="panel-label"><span>Nhân vật đại diện</span><Image /></div>

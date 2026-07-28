@@ -12,6 +12,7 @@ import vn.techflow.manager.auth.*;
 import vn.techflow.manager.task.TaskRepository;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -104,6 +105,12 @@ class CampaignControllerTest {
                 .andExpect(jsonPath("$[0].aspectRatio").value("16:9"))
                 .andExpect(jsonPath("$[0].renderQuality").value("hd"))
                 .andExpect(jsonPath("$[1].status").value("TODO"));
+
+        mvc.perform(get("/api/campaigns/{id}/episodes", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].episodeNumber").value(1))
+                .andExpect(jsonPath("$[1].episodeNumber").value(2));
     }
 
     @Test
