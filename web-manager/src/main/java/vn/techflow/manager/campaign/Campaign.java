@@ -35,6 +35,10 @@ public class Campaign {
     private LocalDateTime lastRunAt;
     @Column(columnDefinition = "TEXT")
     private String seriesPlanJson = "";
+    @Column(columnDefinition = "TEXT")
+    private String characterImageUrl;
+    @Column(columnDefinition = "TEXT")
+    private String characterReferencePrompt;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
     private CampaignStatus status = CampaignStatus.PLANNING;
     @JsonIgnore @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -75,6 +79,10 @@ public class Campaign {
     public void setLastRunAt(LocalDateTime lastRunAt) { this.lastRunAt = lastRunAt; }
     public String getSeriesPlanJson() { return seriesPlanJson; }
     public void setSeriesPlanJson(String seriesPlanJson) { this.seriesPlanJson = seriesPlanJson; }
+    public String getCharacterImageUrl() { return characterImageUrl; }
+    public void setCharacterImageUrl(String characterImageUrl) { this.characterImageUrl = characterImageUrl; }
+    public String getCharacterReferencePrompt() { return characterReferencePrompt; }
+    public void setCharacterReferencePrompt(String characterReferencePrompt) { this.characterReferencePrompt = characterReferencePrompt; }
     public CampaignStatus getStatus() { return status; }
     public void setStatus(CampaignStatus status) { this.status = status; }
     public AppUser getOwner() { return owner; }

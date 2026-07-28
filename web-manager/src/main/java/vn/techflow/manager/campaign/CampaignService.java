@@ -144,6 +144,7 @@ public class CampaignService {
             task.setTargetDurationSeconds(campaign.getTargetDurationSeconds());
             task.setVisualStyle(campaign.getVisualStyle());
             task.setCharacterDescription(campaign.getCharacterDescription());
+            task.setCharacterImageUrl(campaign.getCharacterImageUrl());
             task.setPriority(Priority.MEDIUM);
             task.setStatus(TaskStatus.TODO);
             episodes.add(task);

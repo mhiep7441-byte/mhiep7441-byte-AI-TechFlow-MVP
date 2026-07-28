@@ -63,6 +63,7 @@ class VideoPlan:
     visual_style: str = "cinematic editorial technology, lilac and cobalt, realistic light"
     provider: str = "fallback"
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS
+    character_image_url: str = ""
 
 
 @dataclass
@@ -423,7 +424,94 @@ def _save_generated_image(result: Any, output: Path) -> bool:
     return False
 
 
-def generate_scene_visuals(plan: VideoPlan, output_dir: Path) -> list[Path]:
+def _download_reference_image(url: str, output: Path) -> Path | None:
+    """Download a character reference image from Cloudinary or any HTTPS URL."""
+    if not url or not url.startswith("https://"):
+        return None
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "AI-TechFlow/1.0"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            output.write_bytes(response.read(15_000_000))
+        LOGGER.info("Downloaded character reference image: %s", url)
+        return output
+    except Exception as exc:
+        LOGGER.warning("Could not download character reference: %s", exc)
+        return None
+
+
+def generate_character_image(
+    character_description: str,
+    visual_style: str = "",
+    theme: str = "",
+) -> str | None:
+    """Generate a character reference sheet image and upload to Cloudinary.
+    Returns the Cloudinary URL or None on failure."""
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not key:
+        LOGGER.warning("No OPENAI_API_KEY; cannot generate character image")
+        return None
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=key)
+    except ImportError:
+        LOGGER.warning("OpenAI SDK not available")
+        return None
+
+    prompt = (
+        f"Character reference sheet for animation/video production. "
+        f"Character: {character_description}. "
+        f"{'Theme: ' + theme + '. ' if theme else ''}"
+        f"{'Visual style: ' + visual_style + '. ' if visual_style else ''}"
+        f"Show the character from front view and 3/4 view side by side. "
+        f"Consistent design, expressive face, clear details. "
+        f"Clean white background, professional character design sheet. "
+        f"No text, no watermark, high quality illustration."
+    )
+    try:
+        tmp_dir = OUTPUT_DIR / "_character_refs"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        ref_file = tmp_dir / f"char_{slugify(character_description)}.png"
+        result = client.images.generate(
+            model=IMAGE_MODEL,
+            prompt=prompt,
+            size="1536x1024",
+            quality=IMAGE_QUALITY,
+        )
+        if _save_generated_image(result, ref_file):
+            url = upload_character_image(ref_file, slugify(character_description))
+            ref_file.unlink(missing_ok=True)
+            return url
+    except Exception as exc:
+        LOGGER.warning("Character image generation failed: %s", exc)
+    return None
+
+
+def upload_character_image(image: Path, name: str) -> str:
+    """Upload a character reference image to Cloudinary."""
+    if not os.getenv("CLOUDINARY_URL", "").strip():
+        raise RuntimeError("CLOUDINARY_URL not configured")
+    import cloudinary
+    import cloudinary.uploader
+    cloudinary.config(secure=True)
+    result = cloudinary.uploader.upload(
+        str(image), resource_type="image", public_id=f"techflow/characters/{name}", overwrite=True
+    )
+    return str(result["secure_url"])
+
+
+def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Path | None = None) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    client = None
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if key and ENABLE_AI_IMAGES and MAX_AI_IMAGES:
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=key)
+        except ImportError:
+            LOGGER.warning("Thiếu OpenAI SDK; dùng minh họa vector.")
+
+def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Path | None = None) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     client = None
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -441,19 +529,34 @@ def generate_scene_visuals(plan: VideoPlan, output_dir: Path) -> list[Path]:
         generated = False
         if client is not None and index < MAX_AI_IMAGES:
             prompt = (
-                f"Vertical 9:16 cinematic editorial scene for a Vietnamese technology video. "
-                f"Recurring character: {plan.character}. Consistent wardrobe and face in every scene. "
+                f"Vertical 9:16 cinematic scene for a video. "
+                f"{'Recurring character: ' + plan.character + '. Consistent appearance in every scene. ' if plan.character else ''}"
                 f"Visual direction: {plan.visual_style}. Scene: {scene.visual_prompt}. "
                 f"Character action: {scene.character_action}. Professional lighting, expressive composition, "
                 "realistic hands, no text, no logos, no watermark, leave negative space for captions."
             )
+            # Use reference image for character consistency if available
+            image_inputs = []
+            if character_ref and character_ref.exists():
+                image_inputs.append(character_ref)
             try:
+                gen_kwargs = {
+                    "model": IMAGE_MODEL,
+                    "prompt": prompt,
+                    "size": "1024x1536",
+                    "quality": IMAGE_QUALITY,
+                }
+                # Pass reference image for character consistency (GPT Image edit)
+                if image_inputs:
+                    import base64 as b64mod
+                    gen_kwargs["image"] = [b64mod.standard_b64encode(img.read_bytes()) for img in image_inputs]
                 generated = _save_generated_image(
-                    client.images.generate(
+                    client.images.generate(**gen_kwargs) if not image_inputs
+                    else client.images.edit(
                         model=IMAGE_MODEL,
+                        image=open(image_inputs[0], "rb"),
                         prompt=prompt,
                         size="1024x1536",
-                        quality=IMAGE_QUALITY,
                     ),
                     raw,
                 )
@@ -618,7 +721,7 @@ def create_video(plan: VideoPlan, job_dir: Path) -> tuple[Path, float]:
     durations = [max(2.5, total * weight / weight_sum) for weight in weights]
     duration_scale = total / sum(durations)
     durations = [duration * duration_scale for duration in durations]
-    images = generate_scene_visuals(plan, job_dir / "scenes")
+    images = generate_scene_visuals(plan, job_dir / "scenes", character_ref=getattr(plan, '_character_ref', None))
 
     cursor = 0.0
     subtitles: list[str] = []
@@ -696,6 +799,7 @@ def run(
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
     visual_style: str = "",
     character_description: str = "",
+    character_image_url: str = "",
 ) -> dict[str, Any]:
     job_id = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{slugify(topic)}"
     job_dir = OUTPUT_DIR / job_id
@@ -708,6 +812,13 @@ def run(
         visual_style,
         character_description,
     )
+    plan.character_image_url = character_image_url
+    # Download character reference for visual consistency
+    character_ref = None
+    if character_image_url:
+        ref_path = job_dir / "character_ref.png"
+        character_ref = _download_reference_image(character_image_url, ref_path)
+    plan._character_ref = character_ref
     fact_check = fact_check_plan(plan, research)
     (job_dir / "research.json").write_text(
         json.dumps(research.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
@@ -744,9 +855,19 @@ if __name__ == "__main__":
     )
     parser.add_argument("--visual-style", default="", help="Định hướng hình ảnh nhất quán")
     parser.add_argument("--character", default="", help="Mô tả nhân vật/host nhất quán")
+    parser.add_argument("--character-image", default="", help="URL ảnh reference nhân vật để giữ nhất quán")
+    parser.add_argument("--generate-character", action="store_true", help="Chỉ tạo ảnh character reference rồi thoát")
     args = parser.parse_args()
     try:
-        result = run(args.topic, args.duration, args.visual_style, args.character)
+        if args.generate_character:
+            url = generate_character_image(args.character, args.visual_style, args.topic)
+            if url:
+                print(f"CHARACTER_IMAGE_URL={url}", flush=True)
+                sys.exit(0)
+            else:
+                print("CHARACTER_IMAGE_FAILED", flush=True)
+                sys.exit(1)
+        result = run(args.topic, args.duration, args.visual_style, args.character, args.character_image)
         metadata = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         print(f"VIDEO_METADATA_B64={base64.urlsafe_b64encode(metadata).decode('ascii')}", flush=True)
         print(f"VIDEO_READY={result['video_url']}", flush=True)
