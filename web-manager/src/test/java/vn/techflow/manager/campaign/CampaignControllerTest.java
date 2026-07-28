@@ -74,6 +74,32 @@ class CampaignControllerTest {
 
     @Test
     @WithMockUser(username = EMAIL, roles = "USER")
+    void aiSeriesPlansAndCreatesEpisodesInOneStep() throws Exception {
+        String response = mvc.perform(post("/api/campaigns").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name":"AI Agent nhanh",
+                                  "theme":"Xay AI Agent co kiem chung",
+                                  "episodeCount":2,
+                                  "targetDurationSeconds":60,
+                                  "audience":"Lap trinh vien"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        long id = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).path("id").asLong();
+        mvc.perform(post("/api/campaigns/{id}/ai-series", id).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].campaignId").value(id))
+                .andExpect(jsonPath("$[0].status").value("TODO"))
+                .andExpect(jsonPath("$[1].status").value("TODO"));
+    }
+
+    @Test
+    @WithMockUser(username = EMAIL, roles = "USER")
     void rejectsDurationAboveTenMinutes() throws Exception {
         mvc.perform(post("/api/campaigns").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)

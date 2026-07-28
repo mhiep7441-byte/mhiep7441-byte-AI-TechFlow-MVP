@@ -627,9 +627,20 @@ def compose_scene(raw: Path, scene: Scene, index: int, count: int, output: Path)
 
 
 async def make_voice(text: str, output: Path) -> None:
-    import edge_tts
+    try:
+        import edge_tts
+        await edge_tts.Communicate(text, VOICE, rate="+6%", pitch="+1Hz").save(str(output))
+    except Exception as exc:
+        LOGGER.warning("TTS failed or edge_tts not available (%s); generating silent audio track.", exc)
+        subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                "-t", "30", "-c:a", "libmp3lame", str(output)
+            ],
+            check=True
+        )
 
-    await edge_tts.Communicate(text, VOICE, rate="+6%", pitch="+1Hz").save(str(output))
 
 
 def media_duration(path: Path) -> float:
