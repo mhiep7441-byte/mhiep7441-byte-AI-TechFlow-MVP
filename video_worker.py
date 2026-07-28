@@ -551,13 +551,17 @@ def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Pat
         except ImportError:
             LOGGER.warning("Thiếu OpenAI SDK; dùng minh họa vector.")
 
+    is_16_9 = plan.aspect_ratio == "16:9"
+    img_size = "1536x1024" if is_16_9 else "1024x1536"
+    orientation = "Horizontal 16:9 widescreen cinematic scene" if is_16_9 else "Vertical 9:16 cinematic scene"
+
     paths: list[Path] = []
     for index, scene in enumerate(plan.scenes):
         raw = output_dir / f"raw_{index:02}.png"
         generated = False
         if (gemini_client is not None or openai_client is not None) and index < MAX_AI_IMAGES:
             prompt = (
-                f"Vertical 9:16 cinematic scene for a video. "
+                f"{orientation} for a video. "
                 f"{'Recurring character: ' + plan.character + '. Consistent appearance in every scene. ' if plan.character else ''}"
                 f"Visual direction: {plan.visual_style}. Scene: {scene.visual_prompt}. "
                 f"Character action: {scene.character_action}. Professional lighting, expressive composition, "
@@ -581,14 +585,14 @@ def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Pat
                         openai_client.images.generate(
                             model=IMAGE_MODEL,
                             prompt=prompt,
-                            size="1024x1536",
+                            size=img_size,
                             quality=IMAGE_QUALITY,
                         ) if not (character_ref and character_ref.exists()) else openai_client.images.edit(
-                        model=IMAGE_MODEL,
-                        image=open(character_ref, "rb"),
-                        prompt=prompt,
-                        size="1024x1536",
-                    ),
+                            model=IMAGE_MODEL,
+                            image=open(character_ref, "rb"),
+                            prompt=prompt,
+                            size=img_size,
+                        ),
                         raw,
                     )
             except Exception as exc:
