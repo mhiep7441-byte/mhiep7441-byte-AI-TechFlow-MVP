@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { api } from '../api';
 
-async function api(url, options) {
-  const response = await fetch(url, options);
-  if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
-  return response.status === 204 ? null : response.json();
-}
-
-const json = (method, body) => ({
-  method,
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body),
-});
+const json = (method, body) => ({ method, body });
 
 export function useTechFlowData(refreshInterval = 5000) {
   const [tasks, setTasks] = useState([]);

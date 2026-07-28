@@ -11,6 +11,13 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -19,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from research_agent import ResearchBrief, research_topic
-
+from content_guard import assess_content
 WIDTH = max(360, int(os.getenv("VIDEO_WIDTH", "540")))
 HEIGHT = max(640, int(os.getenv("VIDEO_HEIGHT", "960")))
 FPS = max(8, int(os.getenv("VIDEO_FPS", "12")))
@@ -31,8 +38,8 @@ SCRIPT_MODEL = os.getenv("OPENAI_SCRIPT_MODEL", os.getenv("OPENAI_MODEL", "gpt-5
 IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
 IMAGE_QUALITY = os.getenv("OPENAI_IMAGE_QUALITY", "medium")
 ENABLE_AI_IMAGES = os.getenv("ENABLE_AI_IMAGES", "true").lower() in {"1", "true", "yes", "on"}
-MAX_AI_IMAGES = max(0, min(int(os.getenv("MAX_AI_IMAGES", "4")), 8))
-MAX_SCENES = max(4, min(int(os.getenv("MAX_SCENES", "6")), 8))
+MAX_AI_IMAGES = max(0, min(int(os.getenv("MAX_AI_IMAGES", "20")), 30))
+MAX_SCENES = max(4, min(int(os.getenv("MAX_SCENES", "6")), 30))
 DEFAULT_TARGET_DURATION_SECONDS = 60
 MAX_TARGET_DURATION_SECONDS = 600
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -58,10 +65,13 @@ class VideoPlan:
     caption: str
     hashtags: list[str]
     hook: str = ""
-    character: str = "Linh, nữ kỹ sư AI người Việt trẻ, tóc đen ngắn, áo khoác tím than"
+    character: str = ""
     visual_style: str = "cinematic editorial technology, lilac and cobalt, realistic light"
     provider: str = "fallback"
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS
+    character_image_url: str = ""
+    audio_mode: str = "narrated"
+    video_provider: str = "kenburns"
 
 
 @dataclass
@@ -94,58 +104,76 @@ def fallback_plan(
     topic: str,
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
 ) -> VideoPlan:
-    character = "Linh, nữ kỹ sư AI người Việt trẻ, tóc đen ngắn, áo khoác tím than"
+    duration = normalized_duration(target_duration_seconds)
+    max_s = scene_limit(duration)
+    base_scenes = [
+        Scene(
+            "MỞ ĐẦU",
+            f"{topic}. Hãy cùng khám phá câu chuyện này từ đầu.",
+            topic,
+            f"Cinematic opening scene introducing the world of {topic}, vibrant colors, warm lighting",
+            "xuất hiện và giới thiệu chủ đề",
+            "fast dolly in",
+        ),
+        Scene(
+            "BỐI CẢNH",
+            f"Để hiểu {topic}, ta cần biết bối cảnh và những yếu tố quan trọng nhất.",
+            "Bối cảnh và yếu tố chính",
+            f"Wide establishing shot showing the environment and context of {topic}",
+            "quan sát khung cảnh xung quanh",
+            "slow orbit",
+        ),
+        Scene(
+            "DIỄN BIẾN",
+            "Đây là phần thú vị nhất — khi mọi thứ bắt đầu diễn ra và thay đổi.",
+            "Hành động và thay đổi",
+            f"Dynamic action scene showing the key development in {topic}",
+            "tham gia vào hành động chính",
+            "left to right pan",
+        ),
+        Scene(
+            "KHÁM PHÁ",
+            "Mỗi chi tiết đều có ý nghĩa. Hãy nhìn kỹ hơn vào những điều ẩn giấu.",
+            "Chi tiết quan trọng",
+            f"Close-up detail shot revealing hidden aspects of {topic}",
+            "phát hiện điều bất ngờ",
+            "subtle push in",
+        ),
+        Scene(
+            "KẾT LUẬN",
+            f"Đó là câu chuyện về {topic}. Theo dõi kênh để xem tập tiếp theo.",
+            "Tóm tắt • Theo dõi kênh",
+            f"Hero shot with warm lighting, closing the story of {topic}",
+            "mỉm cười và vẫy tay",
+            "hero pull back",
+        ),
+    ]
+    # Duplicate middle scenes to fill longer durations
+    scenes = list(base_scenes)
+    fillers = base_scenes[1:-1]
+    while len(scenes) < max_s and fillers:
+        for filler in fillers:
+            if len(scenes) >= max_s:
+                break
+            copy = Scene(
+                title=f"{filler.title} {len(scenes)}",
+                narration=filler.narration,
+                on_screen_text=filler.on_screen_text,
+                visual_prompt=filler.visual_prompt,
+                character_action=filler.character_action,
+                camera_motion=filler.camera_motion,
+            )
+            scenes.insert(-1, copy)
     return VideoPlan(
         topic=topic,
-        hook=f"{topic} thực sự thay đổi cách chúng ta làm việc như thế nào?",
-        character=character,
-        visual_style="cinematic editorial illustration, deep navy, electric lilac, warm skin tones",
-        scenes=[
-            Scene(
-                "MỞ ĐẦU",
-                f"{topic} nghe có vẻ phức tạp. Linh sẽ tóm tắt phần cốt lõi trong chưa đầy một phút.",
-                topic,
-                "Vietnamese AI engineer enters a luminous technology studio, confident eye contact",
-                "bước vào studio và nhìn thẳng máy quay",
-                "fast dolly in",
-            ),
-            Scene(
-                "VẤN ĐỀ",
-                "Khi công việc lặp lại quá nhiều, chúng ta mất thời gian cho thao tác thay vì giải quyết vấn đề thật.",
-                "Bớt thao tác lặp lại\nTập trung vào giá trị",
-                "engineer surrounded by floating repetitive task cards and code windows",
-                "gạt các thẻ công việc lặp lại sang một bên",
-                "slow orbit",
-            ),
-            Scene(
-                "CÁCH HOẠT ĐỘNG",
-                "Một quy trình tốt đi từ yêu cầu rõ ràng, qua xử lý có kiểm soát, rồi kiểm tra kết quả trước khi sử dụng.",
-                "Yêu cầu → Xử lý → Kiểm tra",
-                "three-stage holographic workflow in a professional software lab",
-                "chỉ vào ba bước trên bảng hologram",
-                "left to right pan",
-            ),
-            Scene(
-                "KIỂM CHỨNG",
-                "Đừng tin mọi kết quả ngay lập tức. Hãy đối chiếu nguồn, ngày công bố và giới hạn của công nghệ.",
-                "Nguồn chính thức\nNgày công bố\nGiới hạn",
-                "engineer compares verified official documents on a large transparent display",
-                "đánh dấu các nguồn đã được xác minh",
-                "subtle push in",
-            ),
-            Scene(
-                "KẾT LUẬN",
-                f"Đó là cách tiếp cận {topic} có trách nhiệm. Theo dõi TechFlow để xem bản phân tích tiếp theo.",
-                "Hiểu đúng • Dùng đúng • Kiểm tra",
-                "hero shot of the engineer in a modern Vietnamese technology studio",
-                "mỉm cười và đóng bảng phân tích",
-                "hero pull back",
-            ),
-        ],
-        caption=f"{topic} — giải thích ngắn gọn, có kiểm chứng.",
-        hashtags=["#congnghe", "#laptrinh", "#AI", "#TechFlowVN"],
+        hook=f"{topic} — câu chuyện bạn chưa biết.",
+        character="",
+        visual_style="cinematic editorial illustration, vibrant colors, warm lighting, expressive composition",
+        scenes=scenes,
+        caption=f"{topic} — khám phá cùng {CHANNEL_NAME}.",
+        hashtags=["#video", f"#{slugify(topic)}", f"#{CHANNEL_NAME.replace(' ', '')}"],
         provider="fallback",
-        target_duration_seconds=normalized_duration(target_duration_seconds),
+        target_duration_seconds=duration,
     )
 
 
@@ -200,7 +228,7 @@ def generate_plan(
     evidence = json.dumps(brief.to_dict(), ensure_ascii=False)
     prompt = f"""
 Bạn là Creative Director và biên tập viên video dọc cho kênh {CHANNEL_NAME}.
-Tạo storyboard video công nghệ tiếng Việt khoảng {duration} giây về: {topic}
+Tạo storyboard video tiếng Việt khoảng {duration} giây về: {topic}
 
 Research brief (chỉ dùng dữ kiện có trong đây):
 {evidence}
@@ -211,7 +239,9 @@ Nhân vật/host do người dùng chọn: {character_description or "(AI tự �
 Yêu cầu:
 - Từ 4 đến {maximum_scenes} cảnh, hook mạnh trong 2 giây đầu; nhịp tự nhiên, không giật tít sai.
 - Nội dung phải đủ sâu cho thời lượng mục tiêu, có mở bài, diễn tiến và kết luận; không lặp ý để kéo dài.
-- Có một nhân vật người Việt nhất quán xuyên suốt; mô tả ngoại hình cụ thể trong trường character.
+- Tạo một nhân vật nhất quán xuyên suốt phù hợp với chủ đề; mô tả ngoại hình cụ thể trong trường character.
+- Nếu chủ đề là câu chuyện phiêu lưu, trẻ em, giáo dục, v.v., hãy sáng tạo nhân vật phù hợp (ví dụ: chú chó, robot, bé gái, siêu anh hùng...).
+- Với video dài (trên 120 giây), tạo đủ cảnh để mỗi cảnh khoảng 8-12 giây, có cốt truyện rõ ràng: mở đầu, thắt nút, cao trào, kết thúc.
 - Mỗi cảnh có bối cảnh, hành động nhân vật, chuyển động camera và visual_prompt đủ chi tiết để tạo ảnh dọc 9:16.
 - Mỗi khẳng định thực tế phải gắn source_ids hợp lệ. Nếu research offline, nói rõ đây là bản minh họa khái niệm.
 - Câu đọc tự nhiên, ngắn; on_screen_text tối đa 12 từ; không sao chép nguyên văn nguồn.
@@ -402,7 +432,94 @@ def _save_generated_image(result: Any, output: Path) -> bool:
     return False
 
 
-def generate_scene_visuals(plan: VideoPlan, output_dir: Path) -> list[Path]:
+def _download_reference_image(url: str, output: Path) -> Path | None:
+    """Download a character reference image from Cloudinary or any HTTPS URL."""
+    if not url or not url.startswith("https://"):
+        return None
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "AI-TechFlow/1.0"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            output.write_bytes(response.read(15_000_000))
+        LOGGER.info("Downloaded character reference image: %s", url)
+        return output
+    except Exception as exc:
+        LOGGER.warning("Could not download character reference: %s", exc)
+        return None
+
+
+def generate_character_image(
+    character_description: str,
+    visual_style: str = "",
+    theme: str = "",
+) -> str | None:
+    """Generate a character reference sheet image and upload to Cloudinary.
+    Returns the Cloudinary URL or None on failure."""
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not key:
+        LOGGER.warning("No OPENAI_API_KEY; cannot generate character image")
+        return None
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=key)
+    except ImportError:
+        LOGGER.warning("OpenAI SDK not available")
+        return None
+
+    prompt = (
+        f"Character reference sheet for animation/video production. "
+        f"Character: {character_description}. "
+        f"{'Theme: ' + theme + '. ' if theme else ''}"
+        f"{'Visual style: ' + visual_style + '. ' if visual_style else ''}"
+        f"Show the character from front view and 3/4 view side by side. "
+        f"Consistent design, expressive face, clear details. "
+        f"Clean white background, professional character design sheet. "
+        f"No text, no watermark, high quality illustration."
+    )
+    try:
+        tmp_dir = OUTPUT_DIR / "_character_refs"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        ref_file = tmp_dir / f"char_{slugify(character_description)}.png"
+        result = client.images.generate(
+            model=IMAGE_MODEL,
+            prompt=prompt,
+            size="1536x1024",
+            quality=IMAGE_QUALITY,
+        )
+        if _save_generated_image(result, ref_file):
+            url = upload_character_image(ref_file, slugify(character_description))
+            ref_file.unlink(missing_ok=True)
+            return url
+    except Exception as exc:
+        LOGGER.warning("Character image generation failed: %s", exc)
+    return None
+
+
+def upload_character_image(image: Path, name: str) -> str:
+    """Upload a character reference image to Cloudinary."""
+    if not os.getenv("CLOUDINARY_URL", "").strip():
+        raise RuntimeError("CLOUDINARY_URL not configured")
+    import cloudinary
+    import cloudinary.uploader
+    cloudinary.config(secure=True)
+    result = cloudinary.uploader.upload(
+        str(image), resource_type="image", public_id=f"techflow/characters/{name}", overwrite=True
+    )
+    return str(result["secure_url"])
+
+
+def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Path | None = None) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    client = None
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if key and ENABLE_AI_IMAGES and MAX_AI_IMAGES:
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=key)
+        except ImportError:
+            LOGGER.warning("Thiếu OpenAI SDK; dùng minh họa vector.")
+
+def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Path | None = None) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     client = None
     key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -420,19 +537,34 @@ def generate_scene_visuals(plan: VideoPlan, output_dir: Path) -> list[Path]:
         generated = False
         if client is not None and index < MAX_AI_IMAGES:
             prompt = (
-                f"Vertical 9:16 cinematic editorial scene for a Vietnamese technology video. "
-                f"Recurring character: {plan.character}. Consistent wardrobe and face in every scene. "
+                f"Vertical 9:16 cinematic scene for a video. "
+                f"{'Recurring character: ' + plan.character + '. Consistent appearance in every scene. ' if plan.character else ''}"
                 f"Visual direction: {plan.visual_style}. Scene: {scene.visual_prompt}. "
                 f"Character action: {scene.character_action}. Professional lighting, expressive composition, "
                 "realistic hands, no text, no logos, no watermark, leave negative space for captions."
             )
+            # Use reference image for character consistency if available
+            image_inputs = []
+            if character_ref and character_ref.exists():
+                image_inputs.append(character_ref)
             try:
+                gen_kwargs = {
+                    "model": IMAGE_MODEL,
+                    "prompt": prompt,
+                    "size": "1024x1536",
+                    "quality": IMAGE_QUALITY,
+                }
+                # Pass reference image for character consistency (GPT Image edit)
+                if image_inputs:
+                    import base64 as b64mod
+                    gen_kwargs["image"] = [b64mod.standard_b64encode(img.read_bytes()) for img in image_inputs]
                 generated = _save_generated_image(
-                    client.images.generate(
+                    client.images.generate(**gen_kwargs) if not image_inputs
+                    else client.images.edit(
                         model=IMAGE_MODEL,
+                        image=open(image_inputs[0], "rb"),
                         prompt=prompt,
                         size="1024x1536",
-                        quality=IMAGE_QUALITY,
                     ),
                     raw,
                 )
@@ -519,6 +651,26 @@ def media_duration(path: Path) -> float:
     return float(result.stdout.strip())
 
 
+def is_silent_animation(plan: VideoPlan) -> bool:
+    return plan.audio_mode == "silent_animation" or not " ".join(scene.narration for scene in plan.scenes).strip()
+
+
+def build_bgm_command(output: Path, duration: float) -> list[str]:
+    return [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.018",
+        "-f", "lavfi", "-i", "sine=frequency=523:sample_rate=44100",
+        "-filter_complex",
+        "[0:a]volume=0.32[bed];[1:a]volume=0.035,afade=t=in:st=0:d=0.6,afade=t=out:st="
+        + f"{max(0.0, duration - 1.0):.3f}:d=1.0[tone];[bed][tone]amix=inputs=2:duration=first",
+        "-t", f"{duration:.3f}", "-c:a", "libmp3lame", "-q:a", "6", str(output),
+    ]
+
+
+def make_bgm(output: Path, duration: float) -> None:
+    subprocess.run(build_bgm_command(output, duration), check=True, capture_output=True)
+
+
 def srt_time(seconds: float) -> str:
     milliseconds = int(seconds * 1000)
     hours, milliseconds = divmod(milliseconds, 3_600_000)
@@ -584,36 +736,124 @@ def build_motion_ffmpeg_command(
     return command
 
 
+def build_clip_concat_command(clips: list[Path], audio: Path, final: Path) -> list[str]:
+    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    for clip in clips:
+        command.extend(["-i", str(clip)])
+    audio_index = len(clips)
+    command.extend(["-i", str(audio)])
+    parts = "".join(f"[{index}:v:0]" for index in range(len(clips)))
+    filters = f"{parts}concat=n={len(clips)}:v=1:a=0[vout]"
+    command.extend([
+        "-filter_complex", filters, "-map", "[vout]", "-map", f"{audio_index}:a:0",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27",
+        "-threads", str(FFMPEG_THREADS),
+        "-c:a", "aac", "-b:a", "112k", "-shortest", "-movflags", "+faststart", str(final),
+    ])
+    return command
+
+
+def image_to_video_clip(provider: str, image: Path, scene: Scene, duration: float, output: Path) -> bool:
+    endpoint_var = "SEEDANCE2_IMAGE_TO_VIDEO_URL" if provider == "seedance2_fast" else "VEO_IMAGE_TO_VIDEO_URL"
+    key_var = "SEEDANCE2_API_KEY" if provider == "seedance2_fast" else "VEO_API_KEY"
+    endpoint = os.getenv(endpoint_var, "").strip()
+    api_key = os.getenv(key_var, "").strip()
+    if not endpoint or not api_key:
+        LOGGER.info("Video provider %s chưa cấu hình; dùng Ken Burns.", provider)
+        return False
+    payload = json.dumps({
+        "prompt": f"{scene.visual_prompt}. {scene.character_action}. {scene.camera_motion}. Smooth 9:16 animation.",
+        "duration_seconds": max(5, min(10, round(duration))),
+        "aspect_ratio": "9:16",
+        "image_base64": base64.b64encode(image.read_bytes()).decode("ascii"),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=payload,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=180) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    video_url = str(data.get("video_url") or data.get("url") or "").strip()
+    if not video_url:
+        job_id = str(data.get("id") or data.get("job_id") or "").strip()
+        status_url = str(data.get("status_url") or "").strip()
+        for _ in range(36):
+            time.sleep(5)
+            poll_url = status_url or f"{endpoint.rstrip('/')}/{job_id}"
+            poll = urllib.request.Request(poll_url, headers={"Authorization": f"Bearer {api_key}"})
+            with urllib.request.urlopen(poll, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            video_url = str(data.get("video_url") or data.get("url") or "").strip()
+            if video_url:
+                break
+    if not video_url:
+        raise RuntimeError(f"{provider} không trả về video_url")
+    urllib.request.urlretrieve(video_url, output)
+    return output.exists() and output.stat().st_size > 0
+
+
+def generate_motion_clips(provider: str, images: list[Path], scenes: list[Scene], durations: list[float], output_dir: Path) -> list[Path]:
+    if provider not in {"seedance2_fast", "veo"}:
+        return []
+    output_dir.mkdir(parents=True, exist_ok=True)
+    clips: list[Path] = []
+    for index, (image, scene, duration) in enumerate(zip(images, scenes, durations), 1):
+        clip = output_dir / f"scene_{index:02}.mp4"
+        if not image_to_video_clip(provider, image, scene, duration, clip):
+            return []
+        clips.append(clip)
+    return clips
+
+
 def create_video(plan: VideoPlan, job_dir: Path) -> tuple[Path, float]:
     missing = [binary for binary in ("ffmpeg", "ffprobe") if not shutil.which(binary)]
     if missing:
         raise RuntimeError(f"Thiếu công cụ: {', '.join(missing)}")
 
-    voice = job_dir / "narration.mp3"
-    asyncio.run(make_voice(" ".join(scene.narration for scene in plan.scenes), voice))
-    total = media_duration(voice)
-    weights = [max(1, len(scene.narration)) for scene in plan.scenes]
+    voice = job_dir / ("bgm.mp3" if is_silent_animation(plan) else "narration.mp3")
+    if is_silent_animation(plan):
+        total = float(plan.target_duration_seconds)
+        make_bgm(voice, total)
+        weights = [max(1.0, scene.duration_hint) for scene in plan.scenes]
+    else:
+        asyncio.run(make_voice(" ".join(scene.narration for scene in plan.scenes), voice))
+        total = media_duration(voice)
+        weights = [max(1, len(scene.narration)) for scene in plan.scenes]
     weight_sum = sum(weights)
     durations = [max(2.5, total * weight / weight_sum) for weight in weights]
     duration_scale = total / sum(durations)
     durations = [duration * duration_scale for duration in durations]
-    images = generate_scene_visuals(plan, job_dir / "scenes")
+    images = generate_scene_visuals(plan, job_dir / "scenes", character_ref=getattr(plan, '_character_ref', None))
 
     cursor = 0.0
     subtitles: list[str] = []
     for index, (scene, seconds) in enumerate(zip(plan.scenes, durations), 1):
-        subtitles.append(f"{index}\n{srt_time(cursor)} --> {srt_time(cursor + seconds)}\n{scene.narration}\n")
+        subtitle = scene.narration if scene.narration.strip() else scene.on_screen_text
+        subtitles.append(f"{index}\n{srt_time(cursor)} --> {srt_time(cursor + seconds)}\n{subtitle}\n")
         cursor += seconds
     (job_dir / "subtitles.srt").write_text("\n".join(subtitles), encoding="utf-8")
 
     final = job_dir / "final.mp4"
-    subprocess.run(build_motion_ffmpeg_command(images, durations, voice, final), check=True, capture_output=True)
+    clips = generate_motion_clips(plan.video_provider, images, plan.scenes, durations, job_dir / "motion_clips")
+    command = build_clip_concat_command(clips, voice, final) if clips else build_motion_ffmpeg_command(images, durations, voice, final)
+    subprocess.run(command, check=True, capture_output=True)
     return final, media_duration(final)
 
 
 def quality_control(plan: VideoPlan, research: ResearchBrief, fact_check: FactCheck, duration: float) -> dict[str, Any]:
     score = 100
     issues = list(fact_check.issues)
+    guard = assess_content(
+        [asdict(scene) for scene in plan.scenes],
+        research.to_dict(),
+        plan.target_duration_seconds,
+        plan.audio_mode,
+    )
+    score -= guard["penalty"]
+    issues.extend(guard["issues"])
+    issues.extend(guard["blocking_issues"])
     tolerance = max(12, plan.target_duration_seconds * 0.35)
     if abs(duration - plan.target_duration_seconds) > tolerance:
         score -= 15
@@ -636,13 +876,16 @@ def quality_control(plan: VideoPlan, research: ResearchBrief, fact_check: FactCh
     return {
         "score": max(0, score),
         "issues": issues,
-        "ready_for_review": score >= 70,
+        "ready_for_review": score >= 70 and guard["passed"],
         "duration_seconds": round(duration, 2),
         "scene_count": len(plan.scenes),
         "source_count": len(research.sources),
         "ai_images_enabled": bool(os.getenv("OPENAI_API_KEY")) and ENABLE_AI_IMAGES,
         "script_provider": plan.provider,
+        "audio_mode": plan.audio_mode,
+        "video_provider": plan.video_provider,
         "target_duration_seconds": plan.target_duration_seconds,
+        "content_guard": guard,
     }
 
 
@@ -666,6 +909,9 @@ def run(
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
     visual_style: str = "",
     character_description: str = "",
+    character_image_url: str = "",
+    audio_mode: str = "",
+    video_provider: str = "",
 ) -> dict[str, Any]:
     job_id = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{slugify(topic)}"
     job_dir = OUTPUT_DIR / job_id
@@ -678,6 +924,17 @@ def run(
         visual_style,
         character_description,
     )
+    plan.character_image_url = character_image_url
+    requested_audio_mode = (audio_mode or os.getenv("VIDEO_AUDIO_MODE", "narrated")).strip()
+    requested_video_provider = (video_provider or os.getenv("VIDEO_PROVIDER", "kenburns")).strip()
+    plan.audio_mode = requested_audio_mode if requested_audio_mode in {"narrated", "silent_animation"} else "narrated"
+    plan.video_provider = requested_video_provider if requested_video_provider in {"seedance2_fast", "veo", "kenburns"} else "kenburns"
+    # Download character reference for visual consistency
+    character_ref = None
+    if character_image_url:
+        ref_path = job_dir / "character_ref.png"
+        character_ref = _download_reference_image(character_image_url, ref_path)
+    plan._character_ref = character_ref
     fact_check = fact_check_plan(plan, research)
     (job_dir / "research.json").write_text(
         json.dumps(research.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
@@ -714,9 +971,29 @@ if __name__ == "__main__":
     )
     parser.add_argument("--visual-style", default="", help="Định hướng hình ảnh nhất quán")
     parser.add_argument("--character", default="", help="Mô tả nhân vật/host nhất quán")
+    parser.add_argument("--character-image", default="", help="URL ảnh reference nhân vật để giữ nhất quán")
+    parser.add_argument("--generate-character", action="store_true", help="Chỉ tạo ảnh character reference rồi thoát")
+    parser.add_argument("--audio-mode", choices=["narrated", "silent_animation"], default=os.getenv("VIDEO_AUDIO_MODE", "narrated"))
+    parser.add_argument("--video-provider", choices=["seedance2_fast", "veo", "kenburns"], default=os.getenv("VIDEO_PROVIDER", "kenburns"))
     args = parser.parse_args()
     try:
-        result = run(args.topic, args.duration, args.visual_style, args.character)
+        if args.generate_character:
+            url = generate_character_image(args.character, args.visual_style, args.topic)
+            if url:
+                print(f"CHARACTER_IMAGE_URL={url}", flush=True)
+                sys.exit(0)
+            else:
+                print("CHARACTER_IMAGE_FAILED", flush=True)
+                sys.exit(1)
+        result = run(
+            args.topic,
+            args.duration,
+            args.visual_style,
+            args.character,
+            args.character_image,
+            args.audio_mode,
+            args.video_provider,
+        )
         metadata = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         print(f"VIDEO_METADATA_B64={base64.urlsafe_b64encode(metadata).decode('ascii')}", flush=True)
         print(f"VIDEO_READY={result['video_url']}", flush=True)

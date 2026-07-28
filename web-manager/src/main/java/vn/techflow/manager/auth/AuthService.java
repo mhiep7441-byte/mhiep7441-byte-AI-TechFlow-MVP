@@ -92,6 +92,13 @@ public class AuthService implements UserDetailsService {
         return current(authentication).getRole() == UserRole.ADMIN;
     }
 
+    @Transactional
+    public AppUser updateProfile(Authentication authentication, ProfileUpdateRequest request) {
+        AppUser user = current(authentication);
+        user.setDisplayName(request.displayName().trim());
+        return users.save(user);
+    }
+
     private static AppUser newGoogleUser(String email, String name, String picture) {
         AppUser created = new AppUser();
         created.setEmail(email);

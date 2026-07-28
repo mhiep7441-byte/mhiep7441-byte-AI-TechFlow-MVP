@@ -39,3 +39,30 @@ export async function api(path, { method = 'GET', body, headers = {}, signal } =
   }
   return payload;
 }
+
+export async function apiForm(path, formData, { method = 'POST', headers = {}, signal } = {}) {
+  const requestHeaders = { ...headers };
+  const token = csrfToken || cookieToken();
+  if (token) requestHeaders['X-XSRF-TOKEN'] = token;
+  const response = await fetch(path, {
+    method,
+    headers: requestHeaders,
+    body: formData,
+    credentials: 'same-origin',
+    signal,
+  });
+  const contentType = response.headers.get('content-type') || '';
+  const payload = response.status === 204
+    ? null
+    : contentType.includes('application/json') ? await response.json() : await response.text();
+  if (!response.ok) {
+    const error = new Error(payload?.message || payload || `HTTP ${response.status}`);
+    error.status = response.status;
+    error.validation = payload?.validation || {};
+    if (response.status === 401 && !path.startsWith('/api/auth/')) {
+      window.dispatchEvent(new Event('techflow:auth-expired'));
+    }
+    throw error;
+  }
+  return payload;
+}

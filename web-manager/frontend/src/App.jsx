@@ -2,13 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight,
-  CirclePlay, Clock3, Copy, ExternalLink, Film, Gauge, LayoutDashboard, ListFilter,
+  CirclePlay, Clock3, Copy, ExternalLink, Film, Gauge, Image, LayoutDashboard, ListFilter,
   LogOut, Menu, MoreHorizontal, PencilLine, Plus, RefreshCw, Search, Send, Settings2,
   ShieldCheck, Sparkles, Trash2, UserRound, UsersRound, WandSparkles, X, Layers3, Bot,
+  Upload, BookOpen, Star,
 } from 'lucide-react';
-import { api } from './api';
+import { api, apiForm } from './api';
 import { useAuth } from './AuthContext';
 import { evidenceSummary } from './utils';
+import {
+  AdminDashboardPage, AdminFeedbackPage, ProfilePage, ResearchNotebookPage,
+  UserHomePage, VideoFeedbackWidget, YouTubePublishModal,
+} from './WorkspacePages';
 
 const taskDefaults = {
   title: '', description: '', topic: '', caption: '', hashtags: '',
@@ -17,7 +22,8 @@ const taskDefaults = {
 };
 const campaignDefaults = {
   name: '', theme: '', description: '', episodeCount: 5, targetDurationSeconds: 60,
-  visualStyle: '', characterDescription: '', status: 'PLANNING',
+  visualStyle: '', characterDescription: '', audience: '', cadence: 'MANUAL',
+  productionEnabled: false, nextRunAt: '', status: 'PLANNING',
 };
 const statusLabels = {
   TODO: 'Ý tưởng', IN_PROGRESS: 'Đang làm', GENERATING: 'Đang dựng',
@@ -107,19 +113,25 @@ function AppShell() {
   const pageTitle = pathname.startsWith('/videos/') ? 'Video Studio'
     : pathname.startsWith('/videos') ? 'Thư viện video'
       : pathname.startsWith('/campaigns') ? 'Campaign & Series'
+      : pathname.startsWith('/research') ? 'Research Notebook'
       : pathname.startsWith('/calendar') ? 'Lịch nội dung'
-        : pathname.startsWith('/admin') ? 'Quản trị người dùng' : 'Tổng quan';
+        : pathname.startsWith('/profile') ? 'Hồ sơ người dùng'
+          : pathname === '/admin' ? 'Admin Dashboard'
+            : pathname.startsWith('/admin/feedback') ? 'Phản hồi người dùng'
+            : pathname.startsWith('/admin') ? 'Quản trị người dùng' : 'Workspace của tôi';
   const doLogout = async () => { await logout(); navigate('/login'); };
   const close = () => setMobileOpen(false);
   return <div className="app-shell">
     <aside className={mobileOpen ? 'sidebar open' : 'sidebar'}>
       <Link className="brand" to="/" onClick={close}><span>TF</span><div>TechFlow<small>CONTENT STUDIO</small></div></Link>
       <nav>
-        <NavLink to="/" end onClick={close}><LayoutDashboard /> Tổng quan</NavLink>
+        <NavLink to="/" end onClick={close}><LayoutDashboard /> Workspace</NavLink>
         <NavLink to="/videos" onClick={close}><Film /> Video Studio</NavLink>
         <NavLink to="/campaigns" onClick={close}><Layers3 /> Campaign & Series</NavLink>
+        <NavLink to="/research" onClick={close}><BookOpen /> Research Notebook</NavLink>
         <NavLink to="/calendar" onClick={close}><CalendarDays /> Lịch nội dung</NavLink>
-        {user.role === 'ADMIN' && <NavLink to="/admin/users" onClick={close}><UsersRound /> Người dùng</NavLink>}
+        <NavLink to="/profile" onClick={close}><UserRound /> Hồ sơ & kết nối</NavLink>
+        {user.role === 'ADMIN' && <><div className="nav-section-label">ADMIN</div><NavLink to="/admin" end onClick={close}><Gauge /> Dashboard hệ thống</NavLink><NavLink to="/admin/users" onClick={close}><UsersRound /> Người dùng</NavLink><NavLink to="/admin/feedback" onClick={close}><Star /> Phản hồi video</NavLink></>}
       </nav>
       <div className="sidebar-note"><ShieldCheck /><div><b>Review-first</b><span>Không đăng khi chưa duyệt.</span></div></div>
       <div className="sidebar-user"><div className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</div><div><b>{user.displayName}</b><span>{user.role}</span></div><button onClick={doLogout} aria-label="Đăng xuất"><LogOut /></button></div>
@@ -223,10 +235,13 @@ function VideoStudioPage() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [tiktok, setTikTok] = useState(null);
+  const [youtube, setYoutube] = useState(null);
   const [showPublish, setShowPublish] = useState(false);
+  const [showYoutubePublish, setShowYoutubePublish] = useState(false);
   const load = useCallback(() => api(`/api/tasks/${id}`).then((row) => { setTask(row); setForm({ ...taskDefaults, ...row, dueDate: row.dueDate || '' }); }).catch((reason) => setError(reason.message)), [id]);
   useEffect(() => { load(); const timer = window.setInterval(() => { if (task?.status === 'GENERATING') load(); }, 5000); return () => clearInterval(timer); }, [load, task?.status]);
   useEffect(() => { api('/api/tiktok/status').then(setTikTok).catch(() => setTikTok({ configured: false, connected: false })); }, []);
+  useEffect(() => { api('/api/youtube/status').then(setYoutube).catch(() => setYoutube({ configured: false, connected: false })); }, []);
   const evidence = useMemo(() => evidenceSummary(task), [task]);
   const { research, storyboard, sources, scenes } = evidence;
   if (!task && !error) return <Loader />;
@@ -266,6 +281,7 @@ function VideoStudioPage() {
           <label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         </div>
         <div className="publish-tools"><div><Send /><span><b>{tiktok?.connected ? `TikTok • ${tiktok.displayName || 'Đã kết nối'}` : 'Chuẩn bị xuất bản'}</b><small>Duyệt nguồn và video trước khi gửi TikTok.</small></span></div><button type="button" onClick={copyCaption}><Copy /> Sao chép caption</button>{tiktok?.configured && !tiktok.connected ? <a href="/api/tiktok/connect"><Send /> Kết nối TikTok</a> : tiktok?.connected && task.outputPath ? <button type="button" className="publish-primary" onClick={() => setShowPublish(true)}><Check /> Duyệt & đăng TikTok</button> : <Link to="/calendar"><CalendarDays /> Lên lịch</Link>}</div>
+        <div className="publish-tools youtube-tools"><div><CirclePlay /><span><b>{youtube?.connected ? `YouTube • ${youtube.channelTitle || 'Đã kết nối'}` : 'YouTube Publisher'}</b><small>Upload có xác nhận; project chưa audit có thể chỉ đăng private.</small></span></div>{youtube?.configured && !youtube.connected ? <a href="/api/youtube/connect"><Send /> Kết nối YouTube</a> : youtube?.connected && task.outputPath ? <button type="button" className="publish-primary" onClick={() => setShowYoutubePublish(true)}><Check /> Duyệt & upload YouTube</button> : <Link to="/profile"><UserRound /> Cấu hình kênh</Link>}</div>
 
         {(sources.length > 0 || scenes.length > 0) && <section className="evidence-panel">
           <div className="evidence-head"><div><ShieldCheck /><span><small>RESEARCH & STORYBOARD</small><h3>Dữ kiện đứng sau video</h3></span></div><span>{sources.length} nguồn • {scenes.length} cảnh</span></div>
@@ -276,6 +292,8 @@ function VideoStudioPage() {
       </form>
     </div>}
     {showPublish && task && <TikTokPublishModal task={task} onClose={() => setShowPublish(false)} onPublished={(result) => { setShowPublish(false); setMessage(`${result.message}. Mã: ${result.publishId}`); }} />}
+    {task?.outputPath && <VideoFeedbackWidget task={task} />}
+    {showYoutubePublish && task && <YouTubePublishModal task={task} onClose={() => setShowYoutubePublish(false)} onPublished={(result) => { setShowYoutubePublish(false); setMessage(`${result.message}. Video ID: ${result.videoId}`); }} />}
   </div>;
 }
 
@@ -347,6 +365,7 @@ function CampaignModal({ onClose, onCreated }) {
           ...form,
           episodeCount: Number(form.episodeCount),
           targetDurationSeconds: Number(form.targetDurationSeconds),
+          nextRunAt: form.productionEnabled && form.nextRunAt ? form.nextRunAt : null,
         },
       });
       onCreated(created);
@@ -359,8 +378,10 @@ function CampaignModal({ onClose, onCreated }) {
     <label>Tên campaign<input required maxLength="160" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ví dụ: 7 ngày làm chủ AI Agent" /></label>
     <label>Chủ đề xuyên suốt<input required maxLength="500" value={form.theme} onChange={(e) => setForm({ ...form, theme: e.target.value })} placeholder="AI Agent từ nền tảng đến ứng dụng thực tế" /></label>
     <label>Mô tả series<textarea rows="3" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+    <label>Khán giả mục tiêu<input maxLength="160" value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value })} placeholder="Ví dụ: Trẻ em 7-11 tuổi và phụ huynh" /></label>
     <div className="form-grid"><label>Số tập<input type="number" min="1" max="30" value={form.episodeCount} onChange={(e) => setForm({ ...form, episodeCount: e.target.value })} /></label><label>Thời lượng mỗi tập<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: e.target.value })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label></div>
     <div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Cinematic editorial, lilac..." /></label><label>Nhân vật xuyên suốt<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="Host nữ kỹ sư AI..." /></label></div>
+    <div className="automation-box"><div><Bot /><span><b>Lịch sản xuất bản nháp</b><small>Scheduler chỉ dựng tập kế tiếp; không tự đăng TikTok/YouTube.</small></span><input type="checkbox" checked={form.productionEnabled} onChange={(e) => setForm({ ...form, productionEnabled: e.target.checked, cadence: e.target.checked && form.cadence === 'MANUAL' ? 'DAILY' : form.cadence })} /></div>{form.productionEnabled && <div className="form-grid"><label>Nhịp sản xuất<select value={form.cadence} onChange={(e) => setForm({ ...form, cadence: e.target.value })}><option value="HOURLY">Mỗi giờ</option><option value="DAILY">Mỗi ngày</option></select></label><label>Bắt đầu lúc<input type="datetime-local" value={form.nextRunAt} onChange={(e) => setForm({ ...form, nextRunAt: e.target.value })} /></label></div>}</div>
     <button className="button dark full" disabled={busy}>{busy ? 'Đang tạo...' : 'Tạo campaign'} <ArrowRight /></button>
   </form></div>;
 }
@@ -373,18 +394,49 @@ function CampaignsPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [busyCampaign, setBusyCampaign] = useState(null);
   const load = useCallback(() => {
     const params = new URLSearchParams({ page, size: 12, query });
     api(`/api/campaigns?${params}`).then(setData).catch((reason) => setError(reason.message));
   }, [page, query]);
   useEffect(load, [load]);
   const generateEpisodes = async (campaign) => {
-    setError(''); setMessage('');
+    setError(''); setMessage(''); setBusyCampaign(campaign.id);
     try {
       const episodes = await api(`/api/campaigns/${campaign.id}/episodes`, { method: 'POST' });
       setMessage(`Đã chuẩn bị ${episodes.length} tập cho “${campaign.name}”.`);
       load();
     } catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
+  };
+  const planSeries = async (campaign) => {
+    setError(''); setMessage(''); setBusyCampaign(campaign.id);
+    try { await api(`/api/campaigns/${campaign.id}/plan`, { method: 'POST' }); setMessage(`Series Bible cho “${campaign.name}” đã sẵn sàng.`); load(); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
+  };
+  const produceNext = async (campaign) => {
+    setError(''); setMessage(''); setBusyCampaign(campaign.id);
+    try { const task = await api(`/api/campaigns/${campaign.id}/produce-next`, { method: 'POST' }); setMessage(`Đang dựng ${task.title}. Video sẽ về trạng thái chờ duyệt.`); load(); }
+    catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
+  };
+  const toggleAutomation = async (campaign) => {
+    setError(''); setBusyCampaign(campaign.id);
+    const enabled = !campaign.productionEnabled;
+    try {
+      await api(`/api/campaigns/${campaign.id}`, { method: 'PUT', body: {
+        name: campaign.name, theme: campaign.theme, description: campaign.description,
+        episodeCount: campaign.episodeCount, targetDurationSeconds: campaign.targetDurationSeconds,
+        visualStyle: campaign.visualStyle, characterDescription: campaign.characterDescription,
+        audience: campaign.audience, status: campaign.status,
+        cadence: enabled && campaign.cadence === 'MANUAL' ? 'DAILY' : campaign.cadence,
+        productionEnabled: enabled, nextRunAt: enabled ? new Date().toISOString().slice(0, 19) : null,
+      } });
+      setMessage(enabled ? 'Đã bật lịch sản xuất bản nháp.' : 'Đã tạm dừng lịch tự động.');
+      load();
+    } catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
   };
   const remove = async (campaign) => {
     if (!window.confirm(`Xóa campaign “${campaign.name}”? Các video đã tạo vẫn được giữ lại.`)) return;
@@ -398,11 +450,81 @@ function CampaignsPage() {
     <section className="filter-bar"><div className="search-field"><Search /><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} placeholder="Tìm campaign hoặc chủ đề..." /></div></section>
     {!data ? <Loader /> : data.content.length ? <><section className="campaign-grid">{data.content.map((campaign) => <article className="campaign-card" key={campaign.id}>
       <div className="campaign-card-head"><span className={`campaign-status ${campaign.status}`}>{campaign.status}</span><button onClick={() => remove(campaign)}><Trash2 /></button></div>
-      <h3>{campaign.name}</h3><p>{campaign.description || campaign.theme}</p><div className="campaign-theme">{campaign.theme}</div>
+      <Link to={`/campaigns/${campaign.id}`}><h3>{campaign.name}</h3></Link><p>{campaign.description || campaign.theme}</p><div className="campaign-theme">{campaign.theme}</div>
       <div className="campaign-metrics"><span><Layers3 /><b>{campaign.episodeCount}</b><small>TẬP</small></span><span><Clock3 /><b>{campaign.targetDurationSeconds}s</b><small>MỖI TẬP</small></span><span><UserRound /><b>{campaign.ownerName}</b><small>CHỦ SỞ HỮU</small></span></div>
-      <button className="button dark full" onClick={() => generateEpisodes(campaign)}><WandSparkles /> {campaign.status === 'ACTIVE' ? 'Mở lại danh sách tập' : 'Tạo toàn bộ tập'}</button>
+      <div className="campaign-plan-state"><span className={campaign.seriesPlanJson ? 'ready' : ''}><Bot /> {campaign.seriesPlanJson ? 'Series Bible đã có' : 'Chưa tạo Series Bible'}</span><span><CalendarDays /> {campaign.productionEnabled ? `${campaign.cadence} · ${campaign.nextRunAt?.replace('T', ' ').slice(0, 16)}` : 'Lịch đang tắt'}</span></div>
+      <div className="campaign-action-grid"><button disabled={busyCampaign === campaign.id} onClick={() => planSeries(campaign)}><Bot /> Lên ý tưởng AI</button><button disabled={busyCampaign === campaign.id} onClick={() => generateEpisodes(campaign)}><Layers3 /> Tạo danh sách tập</button><button className="primary" disabled={busyCampaign === campaign.id} onClick={() => produceNext(campaign)}><WandSparkles /> Sản xuất tập kế</button><button disabled={busyCampaign === campaign.id || campaign.status === 'COMPLETED'} onClick={() => toggleAutomation(campaign)}><CalendarDays /> {campaign.productionEnabled ? 'Tạm dừng lịch' : 'Bật lịch mỗi ngày'}</button></div>
     </article>)}</section><Pagination page={data.number} totalPages={data.totalPages} onChange={setPage} /></> : <EmptyState icon={Layers3} title="Chưa có campaign" description="Tạo series đầu tiên để sản xuất nội dung đều đặn." action={<button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo campaign</button>} />}
     {showCreate && <CampaignModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
+  </div>;
+}
+
+function CampaignDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [campaign, setCampaign] = useState(null);
+  const [description, setDescription] = useState('');
+  const [file, setFile] = useState(null);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState('');
+  const load = useCallback(() => {
+    api(`/api/campaigns/${id}`).then((row) => {
+      setCampaign(row);
+      setDescription(row.characterReferencePrompt || row.characterDescription || '');
+    }).catch((reason) => setError(reason.message));
+  }, [id]);
+  useEffect(load, [load]);
+
+  const generateCharacter = async (event) => {
+    event.preventDefault(); setError(''); setMessage(''); setBusy('generate');
+    try {
+      const updated = await api(`/api/campaigns/${id}/generate-character`, {
+        method: 'POST',
+        body: { description },
+      });
+      setCampaign(updated);
+      setMessage('Da tao lai anh nhan vat. Cac tap TODO/FAILED se dung reference moi.');
+    } catch (reason) { setError(reason.message); }
+    finally { setBusy(''); }
+  };
+  const uploadCharacter = async (event) => {
+    event.preventDefault(); setError(''); setMessage(''); setBusy('upload');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('description', description);
+      const updated = await apiForm(`/api/campaigns/${id}/character-image`, form);
+      setCampaign(updated);
+      setMessage('Da upload va luu anh nhan vat cho campaign.');
+    } catch (reason) { setError(reason.message); }
+    finally { setBusy(''); }
+  };
+
+  if (!campaign && !error) return <Loader />;
+  return <div className="page campaign-detail-page">
+    <button className="back-link" onClick={() => navigate('/campaigns')}><ArrowLeft /> Quay lai Campaign</button>
+    {error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}
+    {campaign && <><section className="page-intro"><div><span>CHARACTER STUDIO</span><h2>{campaign.name}</h2><p>{campaign.theme}</p></div><span className={`campaign-status ${campaign.status}`}>{campaign.status}</span></section>
+      <section className="character-studio">
+        <article className="character-preview">
+          <div className="panel-label"><span>Nhân vật đại diện</span><Image /></div>
+          {campaign.characterImageUrl ? <img src={campaign.characterImageUrl} alt="Character reference sheet" /> : <div className="character-empty"><Sparkles /><b>Chua co reference sheet</b><span>Tao bang AI hoac upload anh thu cong de giu nhan vat nhat quan.</span></div>}
+          <div><b>{campaign.characterDescription || 'Chua co mo ta nhan vat'}</b><small>{campaign.characterReferencePrompt || 'Prompt se duoc luu sau khi tao hoac upload.'}</small></div>
+        </article>
+        <div className="character-tools">
+          <form className="editor-panel" onSubmit={generateCharacter}>
+            <div className="editor-head"><div><span>AI REFERENCE</span><h2>Tạo lại nhân vật bằng AI</h2></div><WandSparkles /></div>
+            <label>Mo ta nhan vat<textarea rows="5" maxLength="700" required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Be banh bao trang Bobo, ma hong, deo tui xach mau xam tron" /></label>
+            <button className="button dark full" disabled={busy === 'generate'}>{busy === 'generate' ? 'Dang tao...' : 'Tao lai nhan vat bang AI'} <WandSparkles /></button>
+          </form>
+          <form className="editor-panel" onSubmit={uploadCharacter}>
+            <div className="editor-head"><div><span>MANUAL UPLOAD</span><h2>Upload ảnh reference</h2></div><Upload /></div>
+            <label>Anh tu may tinh<input type="file" accept="image/*" required onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
+            <button className="button outline full" disabled={busy === 'upload' || !file}>{busy === 'upload' ? 'Dang upload...' : 'Upload len Cloudinary'} <Upload /></button>
+          </form>
+        </div>
+      </section></>}
   </div>;
 }
 
@@ -413,10 +535,33 @@ function CalendarPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ taskId: '', platform: 'TIKTOK', status: 'PENDING', scheduledAt: '', note: '' });
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const load = useCallback(() => Promise.all([api(`/api/publications?page=${page}&size=20`), api('/api/tasks?size=50')]).then(([rows, taskRows]) => { setItems(rows); setTasks(taskRows.content); }).catch((reason) => setError(reason.message)), [page]);
   useEffect(load, [load]);
   const submit = async (event) => { event.preventDefault(); try { await api('/api/publications', { method: 'POST', body: { ...form, taskId: Number(form.taskId), scheduledAt: form.scheduledAt || null } }); setShowForm(false); load(); } catch (reason) { setError(reason.message); } };
-  return <div className="page"><section className="page-intro"><div><span>PUBLISHING PLAN</span><h2>Lịch nội dung rõ ràng.</h2><p>Chuẩn bị lịch TikTok và YouTube sau khi video đã được duyệt.</p></div><button className="button dark" onClick={() => setShowForm(true)}><Plus /> Thêm lịch</button></section>{error && <div className="alert error">{error}</div>}{!items ? <Loader /> : items.content.length ? <><div className="schedule-list">{items.content.map((item) => <article key={item.id}><div className="schedule-date"><CalendarDays /><b>{item.scheduledAt?.slice(0, 10) || 'Chưa đặt ngày'}</b><span>{item.scheduledAt?.slice(11, 16) || '--:--'}</span></div><div><span className={`platform ${item.platform}`}>{item.platform}</span><h3>{item.taskTitle}</h3><p>{item.note || 'Không có ghi chú'}</p></div><span className={`status publication-${item.status}`}>{item.status}</span></article>)}</div><Pagination page={items.number} totalPages={items.totalPages} onChange={setPage} /></> : <EmptyState icon={CalendarDays} title="Chưa có lịch đăng" description="Thêm lịch sau khi video đã được duyệt." />}{showForm && <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW SCHEDULE</span><h2>Thêm lịch đăng</h2></div><button type="button" onClick={() => setShowForm(false)}><X /></button></div><label>Video<select required value={form.taskId} onChange={(e) => setForm({ ...form, taskId: e.target.value })}><option value="">Chọn video</option>{tasks.map((task) => <option value={task.id} key={task.id}>{task.title}</option>)}</select></label><div className="form-grid"><label>Nền tảng<select value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })}><option>TIKTOK</option><option>YOUTUBE</option><option>OTHER</option></select></label><label>Ngày giờ<input required type="datetime-local" value={form.scheduledAt} onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })} /></label></div><label>Ghi chú<textarea rows="4" maxLength="1000" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label><button className="button dark full">Lưu lịch <ArrowRight /></button></form></div>}</div>;
+  const approve = async (item) => {
+    setError(''); setMessage('');
+    try {
+      await api(`/api/publications/${item.id}/approve`, { method: 'POST', body: { reviewed: true } });
+      setMessage('Đã duyệt lịch. Mở Video Studio để xác nhận cài đặt và gửi lên nền tảng.');
+      await load();
+    } catch (reason) { setError(reason.message); }
+  };
+  return <div className="page">
+    <section className="page-intro"><div><span>PUBLISHING PLAN</span><h2>Lịch nội dung rõ ràng.</h2><p>`PENDING` là lịch đang chờ bạn xem video; hệ thống không tự đăng khi chưa duyệt.</p></div><button className="button dark" onClick={() => setShowForm(true)}><Plus /> Thêm lịch</button></section>
+    {error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}
+    <div className="review-flow-note"><ShieldCheck /><div><b>Quy trình an toàn</b><span>Dựng video → kiểm tra nội dung → duyệt lịch → mở Studio và xác nhận gửi lên TikTok/YouTube.</span></div></div>
+    {!items ? <Loader /> : items.content.length ? <><div className="schedule-list">{items.content.map((item) => <article className={item.status === 'PENDING' && item.scheduledAt && new Date(item.scheduledAt) < new Date() ? 'overdue' : ''} key={item.id}>
+      <div className="schedule-date"><CalendarDays /><b>{item.scheduledAt?.slice(0, 10) || 'Chưa đặt ngày'}</b><span>{item.scheduledAt?.slice(11, 16) || '--:--'}</span></div>
+      <div><span className={`platform ${item.platform}`}>{item.platform}</span><h3>{item.taskTitle}</h3><p>{item.note || 'Không có ghi chú'}</p><small>{item.hasVideo ? 'Video đã dựng xong' : 'Chưa có video để duyệt'}</small></div>
+      <div className="schedule-actions"><span className={`status publication-${item.status}`}>{item.status}</span>
+        {item.status === 'PENDING' && item.hasVideo && <button onClick={() => approve(item)}><Check /> Duyệt lịch</button>}
+        {item.status === 'PENDING' && !item.hasVideo && <Link to={`/videos/${item.taskId}`}><WandSparkles /> Dựng video</Link>}
+        {item.status === 'READY' && <Link to={`/videos/${item.taskId}`}><Send /> Mở Studio & đăng</Link>}
+      </div>
+    </article>)}</div><Pagination page={items.number} totalPages={items.totalPages} onChange={setPage} /></> : <EmptyState icon={CalendarDays} title="Chưa có lịch đăng" description="Thêm lịch sau khi video đã được duyệt." />}
+    {showForm && <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW SCHEDULE</span><h2>Thêm lịch đăng</h2></div><button type="button" onClick={() => setShowForm(false)}><X /></button></div><label>Video<select required value={form.taskId} onChange={(e) => setForm({ ...form, taskId: e.target.value })}><option value="">Chọn video</option>{tasks.map((task) => <option value={task.id} key={task.id}>{task.title}</option>)}</select></label><div className="form-grid"><label>Nền tảng<select value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })}><option>TIKTOK</option><option>YOUTUBE</option><option>OTHER</option></select></label><label>Ngày giờ<input required type="datetime-local" value={form.scheduledAt} onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })} /></label></div><label>Ghi chú<textarea rows="4" maxLength="1000" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label><button className="button dark full">Lưu lịch <ArrowRight /></button></form></div>}
+  </div>;
 }
 
 function AdminUsersPage() {
@@ -434,12 +579,15 @@ export default function App() {
   return <Routes>
     <Route path="/login" element={<LoginPage />} />
     <Route element={<Protected />}><Route element={<AppShell />}>
-      <Route index element={<DashboardPage />} />
+      <Route index element={<UserHomePage />} />
       <Route path="videos" element={<VideosPage />} />
       <Route path="videos/:id" element={<VideoStudioPage />} />
       <Route path="campaigns" element={<CampaignsPage />} />
+      <Route path="campaigns/:id" element={<CampaignDetailPage />} />
+      <Route path="research" element={<ResearchNotebookPage />} />
       <Route path="calendar" element={<CalendarPage />} />
-      <Route element={<Protected admin />}><Route path="admin/users" element={<AdminUsersPage />} /></Route>
+      <Route path="profile" element={<ProfilePage />} />
+      <Route element={<Protected admin />}><Route path="admin" element={<AdminDashboardPage />} /><Route path="admin/users" element={<AdminUsersPage />} /><Route path="admin/feedback" element={<AdminFeedbackPage />} /></Route>
     </Route></Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;

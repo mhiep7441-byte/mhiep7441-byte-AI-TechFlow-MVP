@@ -6,7 +6,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vn.techflow.manager.auth.AppUser;
 import vn.techflow.manager.auth.AuthService;
-import vn.techflow.manager.auth.UserRole;
 import vn.techflow.manager.publication.PublicationRepository;
 import vn.techflow.manager.task.TaskRepository;
 import vn.techflow.manager.task.TaskStatus;
@@ -29,7 +28,7 @@ public class DashboardController {
     @GetMapping
     public DashboardResponse overview(Authentication authentication) {
         AppUser viewer = authService.current(authentication);
-        Long ownerId = viewer.getRole() == UserRole.ADMIN ? null : viewer.getId();
+        Long ownerId = viewer.getId();
         return new DashboardResponse(
                 tasks.countVisible(ownerId),
                 tasks.countVisibleByStatusIn(ownerId, List.of(TaskStatus.IN_PROGRESS, TaskStatus.GENERATING)),

@@ -121,6 +121,9 @@ public class TaskService {
             if (!task.getCharacterDescription().isBlank()) {
                 command.addAll(List.of("--character", task.getCharacterDescription()));
             }
+            if (task.getCharacterImageUrl() != null && !task.getCharacterImageUrl().isBlank()) {
+                command.addAll(List.of("--character-image", task.getCharacterImageUrl()));
+            }
             Process process = new ProcessBuilder(command)
                     .directory(projectDirectory.toFile())
                     .redirectErrorStream(true)

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.Optional;
+import java.util.List;
 
 public interface PublicationRepository extends JpaRepository<Publication, Long> {
     @Query(value = """
@@ -28,4 +29,8 @@ public interface PublicationRepository extends JpaRepository<Publication, Long> 
 
     @Query("select count(p) from Publication p join p.task t where (:ownerId is null or t.owner.id = :ownerId)")
     long countVisible(Long ownerId);
+    long countByStatus(PublicationStatus status);
+
+    Optional<Publication> findFirstByTaskIdAndPlatformAndStatusInOrderByCreatedAtAsc(
+            Long taskId, Platform platform, List<PublicationStatus> statuses);
 }

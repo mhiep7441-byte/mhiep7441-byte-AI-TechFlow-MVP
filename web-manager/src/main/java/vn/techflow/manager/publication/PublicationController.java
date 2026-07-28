@@ -33,6 +33,13 @@ public class PublicationController {
         return service.update(id, request, authentication);
     }
 
+    @PostMapping("/{id}/approve")
+    public PublicationResponse approve(@PathVariable Long id,
+                                       @RequestBody PublicationApprovalRequest request,
+                                       Authentication authentication) {
+        return service.approve(id, request, authentication);
+    }
+
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id, Authentication authentication) {
         service.delete(id, authentication);

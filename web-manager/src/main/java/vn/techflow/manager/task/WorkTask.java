@@ -50,6 +50,8 @@ public class WorkTask {
     private String visualStyle = "";
     @Column(nullable = false, length = 240)
     private String characterDescription = "";
+    @Column(columnDefinition = "TEXT")
+    private String characterImageUrl;
     @JsonIgnore @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
     private AppUser owner;
@@ -104,6 +106,8 @@ public class WorkTask {
     public void setVisualStyle(String visualStyle) { this.visualStyle = visualStyle; }
     public String getCharacterDescription() { return characterDescription; }
     public void setCharacterDescription(String characterDescription) { this.characterDescription = characterDescription; }
+    public String getCharacterImageUrl() { return characterImageUrl; }
+    public void setCharacterImageUrl(String characterImageUrl) { this.characterImageUrl = characterImageUrl; }
     public AppUser getOwner() { return owner; }
     public void setOwner(AppUser owner) { this.owner = owner; }
     public Long getOwnerId() { return owner == null ? null : owner.getId(); }
