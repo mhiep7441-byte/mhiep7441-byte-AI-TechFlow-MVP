@@ -83,7 +83,11 @@ class CampaignControllerTest {
                                   "theme":"Xay AI Agent co kiem chung",
                                   "episodeCount":2,
                                   "targetDurationSeconds":60,
-                                  "audience":"Lap trinh vien"
+                                  "audience":"Lap trinh vien",
+                                  "audioMode":"silent_animation",
+                                  "videoProvider":"veo",
+                                  "aspectRatio":"16:9",
+                                  "renderQuality":"hd"
                                 }
                                 """))
                 .andExpect(status().isCreated())
@@ -95,6 +99,10 @@ class CampaignControllerTest {
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].campaignId").value(id))
                 .andExpect(jsonPath("$[0].status").value("TODO"))
+                .andExpect(jsonPath("$[0].audioMode").value("silent_animation"))
+                .andExpect(jsonPath("$[0].videoProvider").value("veo"))
+                .andExpect(jsonPath("$[0].aspectRatio").value("16:9"))
+                .andExpect(jsonPath("$[0].renderQuality").value("hd"))
                 .andExpect(jsonPath("$[1].status").value("TODO"));
     }
 
