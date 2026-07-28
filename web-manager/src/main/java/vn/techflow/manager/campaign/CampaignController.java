@@ -66,6 +66,12 @@ public class CampaignController {
         return service.planSeries(id, authentication);
     }
 
+    @Operation(summary = "Dung AI tao series bible va danh sach tap trong mot buoc")
+    @PostMapping("/{id}/ai-series")
+    public List<WorkTask> planAndCreateEpisodes(@PathVariable Long id, Authentication authentication) {
+        return service.planAndCreateEpisodes(id, authentication);
+    }
+
     @Operation(summary = "Tạo lại ảnh reference nhân vật bằng AI")
     @PostMapping("/{id}/generate-character")
     public Campaign generateCharacter(@PathVariable Long id,

@@ -238,7 +238,7 @@ function VideosPage() {
     if (status) params.set('status', status);
     api(`/api/tasks?${params}`).then(setPageData).catch((reason) => setError(reason.message));
   }, [page, query, status]);
-  useEffect(load, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const remove = async (task) => {
     if (!window.confirm(`Xóa “${task.title}”?`)) return;
@@ -427,7 +427,7 @@ function CampaignsPage() {
     const params = new URLSearchParams({ page, size: 12, query });
     api(`/api/campaigns?${params}`).then(setData).catch((reason) => setError(reason.message));
   }, [page, query]);
-  useEffect(load, [load]);
+  useEffect(() => { load(); }, [load]);
   const generateEpisodes = async (campaign) => {
     setError(''); setMessage(''); setBusyCampaign(campaign.id);
     try {
@@ -441,6 +441,15 @@ function CampaignsPage() {
     setError(''); setMessage(''); setBusyCampaign(campaign.id);
     try { await api(`/api/campaigns/${campaign.id}/plan`, { method: 'POST' }); setMessage(`Series Bible cho “${campaign.name}” đã sẵn sàng.`); load(); }
     catch (reason) { setError(reason.message); }
+    finally { setBusyCampaign(null); }
+  };
+  const generateAiSeries = async (campaign) => {
+    setError(''); setMessage(''); setBusyCampaign(campaign.id);
+    try {
+      const episodes = await api(`/api/campaigns/${campaign.id}/ai-series`, { method: 'POST' });
+      setMessage(`AI ?? l?p Series Bible v? chu?n b? ${episodes.length} t?p cho ?${campaign.name}?.`);
+      load();
+    } catch (reason) { setError(reason.message); }
     finally { setBusyCampaign(null); }
   };
   const produceNext = async (campaign) => {
@@ -481,7 +490,7 @@ function CampaignsPage() {
       <Link to={`/campaigns/${campaign.id}`}><h3>{campaign.name}</h3></Link><p>{campaign.description || campaign.theme}</p><div className="campaign-theme">{campaign.theme}</div>
       <div className="campaign-metrics"><span><Layers3 /><b>{campaign.episodeCount}</b><small>TẬP</small></span><span><Clock3 /><b>{campaign.targetDurationSeconds}s</b><small>MỖI TẬP</small></span><span><UserRound /><b>{campaign.ownerName}</b><small>CHỦ SỞ HỮU</small></span></div>
       <div className="campaign-plan-state"><span className={campaign.seriesPlanJson ? 'ready' : ''}><Bot /> {campaign.seriesPlanJson ? 'Series Bible đã có' : 'Chưa tạo Series Bible'}</span><span><CalendarDays /> {campaign.productionEnabled ? `${campaign.cadence} · ${campaign.nextRunAt?.replace('T', ' ').slice(0, 16)}` : 'Lịch đang tắt'}</span></div>
-      <div className="campaign-action-grid"><button disabled={busyCampaign === campaign.id} onClick={() => planSeries(campaign)}><Bot /> Lên ý tưởng AI</button><button disabled={busyCampaign === campaign.id} onClick={() => generateEpisodes(campaign)}><Layers3 /> Tạo danh sách tập</button><button className="primary" disabled={busyCampaign === campaign.id} onClick={() => produceNext(campaign)}><WandSparkles /> Sản xuất tập kế</button><button disabled={busyCampaign === campaign.id || campaign.status === 'COMPLETED'} onClick={() => toggleAutomation(campaign)}><CalendarDays /> {campaign.productionEnabled ? 'Tạm dừng lịch' : 'Bật lịch mỗi ngày'}</button></div>
+      <div className="campaign-action-grid"><button className="primary" disabled={busyCampaign === campaign.id} onClick={() => generateAiSeries(campaign)}><Bot /> AI t?o series</button><button disabled={busyCampaign === campaign.id} onClick={() => generateEpisodes(campaign)}><Layers3 /> T?o t?p th? c?ng</button><button disabled={busyCampaign === campaign.id} onClick={() => planSeries(campaign)}><BookOpen /> Ch? l?p Bible</button><button disabled={busyCampaign === campaign.id || campaign.status === 'COMPLETED'} onClick={() => toggleAutomation(campaign)}><CalendarDays /> {campaign.productionEnabled ? 'T?m d?ng l?ch' : 'B?t l?ch m?i ng?y'}</button><button className="primary" disabled={busyCampaign === campaign.id} onClick={() => produceNext(campaign)}><WandSparkles /> S?n xu?t t?p k?</button></div>
     </article>)}</section><Pagination page={data.number} totalPages={data.totalPages} onChange={setPage} /></> : <EmptyState icon={Layers3} title="Chưa có campaign" description="Tạo series đầu tiên để sản xuất nội dung đều đặn." action={<button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo campaign</button>} />}
     {showCreate && <CampaignModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />}
   </div>;
@@ -502,7 +511,7 @@ function CampaignDetailPage() {
       setDescription(row.characterReferencePrompt || row.characterDescription || '');
     }).catch((reason) => setError(reason.message));
   }, [id]);
-  useEffect(load, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const generateCharacter = async (event) => {
     event.preventDefault(); setError(''); setMessage(''); setBusy('generate');
@@ -565,7 +574,7 @@ function CalendarPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const load = useCallback(() => Promise.all([api(`/api/publications?page=${page}&size=20`), api('/api/tasks?size=50')]).then(([rows, taskRows]) => { setItems(rows); setTasks(taskRows.content); }).catch((reason) => setError(reason.message)), [page]);
-  useEffect(load, [load]);
+  useEffect(() => { load(); }, [load]);
   const submit = async (event) => { event.preventDefault(); try { await api('/api/publications', { method: 'POST', body: { ...form, taskId: Number(form.taskId), scheduledAt: form.scheduledAt || null } }); setShowForm(false); load(); } catch (reason) { setError(reason.message); } };
   const approve = async (item) => {
     setError(''); setMessage('');
@@ -598,7 +607,7 @@ function AdminUsersPage() {
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const load = useCallback(() => api(`/api/admin/users?page=${page}&size=20&query=${encodeURIComponent(query)}`).then(setData).catch((reason) => setError(reason.message)), [page, query]);
-  useEffect(load, [load]);
+  useEffect(() => { load(); }, [load]);
   const update = async (user, changes) => { try { await api(`/api/admin/users/${user.id}`, { method: 'PUT', body: { displayName: user.displayName, role: user.role, enabled: user.enabled, ...changes } }); load(); } catch (reason) { setError(reason.message); } };
   return <div className="page"><section className="page-intro"><div><span>ADMIN CONTROL</span><h2>Người dùng & phân quyền.</h2><p>Quản lý quyền truy cập workspace và trạng thái tài khoản.</p></div></section>{error && <div className="alert error">{error}</div>}<section className="filter-bar"><div className="search-field"><Search /><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} placeholder="Tìm email hoặc tên..." /></div></section>{!data ? <Loader /> : <><div className="user-table"><div className="user-row header"><span>Người dùng</span><span>Loại đăng nhập</span><span>Vai trò</span><span>Trạng thái</span></div>{data.content.map((user) => <div className="user-row" key={user.id}><div><span className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</span><span><b>{user.displayName}</b><small>{user.email}</small></span></div><span>{user.provider}</span><select value={user.role} onChange={(e) => update(user, { role: e.target.value })}><option value="USER">USER</option><option value="ADMIN">ADMIN</option></select><button className={user.enabled ? 'enabled-pill' : 'disabled-pill'} onClick={() => update(user, { enabled: !user.enabled })}>{user.enabled ? 'Đang hoạt động' : 'Đã khóa'}</button></div>)}</div><Pagination page={data.number} totalPages={data.totalPages} onChange={setPage} /></>}</div>;
 }

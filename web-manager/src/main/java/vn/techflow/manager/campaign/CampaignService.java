@@ -201,6 +201,15 @@ public class CampaignService {
     }
 
     @Transactional
+    public List<WorkTask> planAndCreateEpisodes(Long id, Authentication authentication) {
+        Campaign campaign = accessible(id, authentication);
+        JsonNode plan = planner.plan(campaign);
+        campaign.setSeriesPlanJson(plan.toString());
+        campaigns.save(campaign);
+        return createOrRefreshEpisodes(campaign);
+    }
+
+    @Transactional
     public List<WorkTask> createEpisodes(Long id, Authentication authentication) {
         return createEpisodes(accessible(id, authentication));
     }
@@ -230,33 +239,24 @@ public class CampaignService {
     }
 
     private List<WorkTask> createEpisodes(Campaign campaign) {
+        return createOrRefreshEpisodes(campaign);
+    }
+
+    private List<WorkTask> createOrRefreshEpisodes(Campaign campaign) {
         Long id = campaign.getId();
         List<WorkTask> existing = tasks.findByCampaignIdOrderByEpisodeNumberAsc(id);
-        if (!existing.isEmpty()) return existing;
+        if (!existing.isEmpty()) {
+            syncPlannedEpisodes(campaign, existing);
+            return tasks.findByCampaignIdOrderByEpisodeNumberAsc(id);
+        }
 
         JsonNode plannedEpisodes = readPlan(campaign).path("episodes");
         List<WorkTask> episodes = new ArrayList<>();
         for (int number = 1; number <= campaign.getEpisodeCount(); number++) {
-            String angle = ANGLES.get((number - 1) % ANGLES.size());
             JsonNode planned = plannedEpisodes.isArray() && plannedEpisodes.size() >= number
                     ? plannedEpisodes.get(number - 1) : json.createObjectNode();
-            String plannedTitle = planned.path("title").asText("").trim();
-            String synopsis = planned.path("synopsis").asText(angle).trim();
-            String objective = planned.path("learning_objective").asText("").trim();
-            String guardrails = planned.path("factual_guardrails").isArray()
-                    ? planned.path("factual_guardrails").toString() : "[]";
-
             WorkTask task = new WorkTask();
             task.setOwner(campaign.getOwner());
-            task.setTitle(limit(plannedTitle.isBlank()
-                    ? campaign.getName() + " — Tập " + number
-                    : campaign.getName() + " — " + plannedTitle, 160));
-            task.setTopic(limit(campaign.getTheme() + ". Tập " + number + "/" + campaign.getEpisodeCount()
-                    + ": " + synopsis + ". Mục tiêu: " + objective
-                    + ". Ràng buộc kiểm chứng: " + guardrails
-                    + ". Không lặp lại nội dung của tập khác.", 500));
-            task.setDescription(limit(campaign.getDescription()
-                    + (objective.isBlank() ? "" : "\nMục tiêu: " + objective), 2000));
             task.setCampaignId(id);
             task.setEpisodeNumber(number);
             task.setTargetDurationSeconds(campaign.getTargetDurationSeconds());
@@ -265,12 +265,54 @@ public class CampaignService {
             task.setCharacterImageUrl(campaign.getCharacterImageUrl());
             task.setPriority(Priority.MEDIUM);
             task.setStatus(TaskStatus.TODO);
+            applyEpisodePlan(campaign, task, number, planned);
             episodes.add(task);
         }
         tasks.saveAll(episodes);
         campaign.setStatus(CampaignStatus.ACTIVE);
         campaigns.save(campaign);
         return tasks.findByCampaignIdOrderByEpisodeNumberAsc(id);
+    }
+
+    private void syncPlannedEpisodes(Campaign campaign, List<WorkTask> episodes) {
+        JsonNode plannedEpisodes = readPlan(campaign).path("episodes");
+        for (int index = 0; index < episodes.size(); index++) {
+            WorkTask task = episodes.get(index);
+            TaskStatus status = task.getStatus();
+            if (status != TaskStatus.TODO && status != TaskStatus.FAILED) continue;
+            int number = task.getEpisodeNumber() == null ? index + 1 : task.getEpisodeNumber();
+            JsonNode planned = plannedEpisodes.isArray() && plannedEpisodes.size() >= number
+                    ? plannedEpisodes.get(number - 1) : json.createObjectNode();
+            task.setTargetDurationSeconds(campaign.getTargetDurationSeconds());
+            task.setVisualStyle(campaign.getVisualStyle());
+            task.setCharacterDescription(campaign.getCharacterDescription());
+            task.setCharacterImageUrl(campaign.getCharacterImageUrl());
+            applyEpisodePlan(campaign, task, number, planned);
+        }
+        tasks.saveAll(episodes);
+        campaign.setStatus(CampaignStatus.ACTIVE);
+        campaigns.save(campaign);
+    }
+
+    private void applyEpisodePlan(Campaign campaign, WorkTask task, int number, JsonNode planned) {
+        String angle = ANGLES.get((number - 1) % ANGLES.size());
+        String plannedTitle = planned.path("title").asText("").trim();
+        String synopsis = planned.path("synopsis").asText(angle).trim();
+        String objective = planned.path("learning_objective").asText("").trim();
+        String hook = planned.path("hook").asText("").trim();
+        String guardrails = planned.path("factual_guardrails").isArray()
+                ? planned.path("factual_guardrails").toString() : "[]";
+        task.setTitle(limit(plannedTitle.isBlank()
+                ? campaign.getName() + " — Tập " + number
+                : campaign.getName() + " — " + plannedTitle, 160));
+        task.setTopic(limit(campaign.getTheme() + ". Tập " + number + "/" + campaign.getEpisodeCount()
+                + ": " + synopsis
+                + (hook.isBlank() ? "" : ". Hook: " + hook)
+                + ". Mục tiêu: " + objective
+                + ". Ràng buộc kiểm chứng: " + guardrails
+                + ". Không lặp lại nội dung của tập khác.", 500));
+        task.setDescription(limit(campaign.getDescription()
+                + (objective.isBlank() ? "" : "\nMục tiêu: " + objective), 2000));
     }
 
     private WorkTask claimNext(Campaign campaign, LocalDateTime now) {
@@ -315,6 +357,8 @@ public class CampaignService {
         campaign.setTargetDurationSeconds(request.targetDurationSeconds() == null ? 60 : request.targetDurationSeconds());
         campaign.setVisualStyle(clean(request.visualStyle()));
         campaign.setCharacterDescription(clean(request.characterDescription()));
+        campaign.setCharacterImageUrl(clean(request.characterImageUrl()).isBlank() ? null : clean(request.characterImageUrl()));
+        campaign.setCharacterReferencePrompt(clean(request.characterReferencePrompt()));
         campaign.setAudience(clean(request.audience()));
         campaign.setCadence(request.cadence() == null ? CampaignCadence.MANUAL : request.cadence());
         campaign.setProductionEnabled(Boolean.TRUE.equals(request.productionEnabled())
