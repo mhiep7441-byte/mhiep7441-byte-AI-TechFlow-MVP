@@ -171,6 +171,9 @@ Yêu cầu:
         data["provider"] = provider
         return normalize_plan(data, theme, safe_count, audience)
     except Exception:
+        if os.getenv("AI_REQUIRED", "false").strip().lower() in {"1", "true", "yes"}:
+            LOGGER.exception("AI Series Planner failed while AI_REQUIRED is enabled")
+            raise
         LOGGER.exception("AI Series Planner unavailable; using deterministic offline plan")
         return fallback_plan(theme, safe_count, audience)
 

@@ -1,6 +1,8 @@
 import unittest
 import os
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import video_worker
@@ -108,6 +110,41 @@ class VideoWorkerTests(unittest.TestCase):
 
         self.assertFalse(fact_check.approved)
         self.assertTrue(any("offline" in issue.lower() for issue in fact_check.issues))
+
+    def test_required_ai_never_returns_fallback_storyboard(self):
+        with patch.dict(os.environ, {"AI_REQUIRED": "true"}, clear=False), \
+                patch.object(video_worker, "_generate_script_json", side_effect=RuntimeError("Gemini unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "Gemini unavailable"):
+                video_worker.generate_plan("AI thật", offline_brief("AI thật"), 180)
+
+    def test_gemini_image_provider_generates_each_scene(self):
+        calls = []
+
+        class FakeModels:
+            def generate_content(self, **kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(parts=[SimpleNamespace(inline_data=SimpleNamespace(data=b"generated-image"))])
+
+        class FakeClient:
+            def __init__(self, **_kwargs):
+                self.models = FakeModels()
+
+        fake_genai = SimpleNamespace(Client=FakeClient)
+        plan = video_worker.fallback_plan("AI hình ảnh")
+        plan.scenes = plan.scenes[:1]
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {
+                    "GEMINI_API_KEY": "test-key",
+                    "IMAGE_PROVIDER": "gemini",
+                    "GEMINI_IMAGE_MODEL": "gemini-image-test",
+                }, clear=False), \
+                patch.dict("sys.modules", {"google": SimpleNamespace(genai=fake_genai)}), \
+                patch.object(video_worker, "compose_scene", side_effect=lambda _raw, _scene, _index, _count, output: output.write_bytes(b"jpg")):
+            paths = video_worker.generate_scene_visuals(plan, Path(directory))
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual("gemini-image-test", calls[0]["model"])
+        self.assertEqual(1, len(paths))
 
 
 if __name__ == "__main__":

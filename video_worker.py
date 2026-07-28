@@ -311,6 +311,9 @@ Yêu cầu:
             target_duration_seconds=duration,
         )
     except Exception as exc:
+        if os.getenv("AI_REQUIRED", "false").strip().lower() in {"1", "true", "yes"}:
+            LOGGER.exception("Script Agent failed while AI_REQUIRED is enabled: %s", exc)
+            raise
         LOGGER.exception("Script Agent thất bại, dùng storyboard offline: %s", exc)
         return fallback_plan(topic, duration)
 
@@ -530,25 +533,21 @@ def upload_character_image(image: Path, name: str) -> str:
 
 def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Path | None = None) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    client = None
-    key = os.getenv("OPENAI_API_KEY", "").strip()
-    if key and ENABLE_AI_IMAGES and MAX_AI_IMAGES:
+    image_provider = os.getenv("IMAGE_PROVIDER", "auto").strip().lower()
+    gemini_client = None
+    openai_client = None
+    if image_provider in {"auto", "gemini"} and os.getenv("GEMINI_API_KEY", "").strip() and ENABLE_AI_IMAGES:
         try:
-            from openai import OpenAI
+            from google import genai
 
-            client = OpenAI(api_key=key)
+            gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"].strip())
         except ImportError:
-            LOGGER.warning("Thiếu OpenAI SDK; dùng minh họa vector.")
-
-def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Path | None = None) -> list[Path]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    client = None
-    key = os.getenv("OPENAI_API_KEY", "").strip()
-    if key and ENABLE_AI_IMAGES and MAX_AI_IMAGES:
+            LOGGER.warning("Thiếu Google GenAI SDK; không thể tạo ảnh Gemini.")
+    if gemini_client is None and image_provider in {"auto", "openai"} and os.getenv("OPENAI_API_KEY", "").strip() and ENABLE_AI_IMAGES:
         try:
             from openai import OpenAI
 
-            client = OpenAI(api_key=key)
+            openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"].strip())
         except ImportError:
             LOGGER.warning("Thiếu OpenAI SDK; dùng minh họa vector.")
 
@@ -556,7 +555,7 @@ def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Pat
     for index, scene in enumerate(plan.scenes):
         raw = output_dir / f"raw_{index:02}.png"
         generated = False
-        if client is not None and index < MAX_AI_IMAGES:
+        if (gemini_client is not None or openai_client is not None) and index < MAX_AI_IMAGES:
             prompt = (
                 f"Vertical 9:16 cinematic scene for a video. "
                 f"{'Recurring character: ' + plan.character + '. Consistent appearance in every scene. ' if plan.character else ''}"
@@ -564,33 +563,38 @@ def generate_scene_visuals(plan: VideoPlan, output_dir: Path, character_ref: Pat
                 f"Character action: {scene.character_action}. Professional lighting, expressive composition, "
                 "realistic hands, no text, no logos, no watermark, leave negative space for captions."
             )
-            # Use reference image for character consistency if available
-            image_inputs = []
-            if character_ref and character_ref.exists():
-                image_inputs.append(character_ref)
             try:
-                gen_kwargs = {
-                    "model": IMAGE_MODEL,
-                    "prompt": prompt,
-                    "size": "1024x1536",
-                    "quality": IMAGE_QUALITY,
-                }
-                # Pass reference image for character consistency (GPT Image edit)
-                if image_inputs:
-                    import base64 as b64mod
-                    gen_kwargs["image"] = [b64mod.standard_b64encode(img.read_bytes()) for img in image_inputs]
-                generated = _save_generated_image(
-                    client.images.generate(**gen_kwargs) if not image_inputs
-                    else client.images.edit(
+                if gemini_client is not None:
+                    response = gemini_client.models.generate_content(
+                        model=os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
+                        contents=[prompt],
+                    )
+                    for part in getattr(response, "parts", []) or []:
+                        inline_data = getattr(part, "inline_data", None)
+                        data = getattr(inline_data, "data", None)
+                        if data:
+                            raw.write_bytes(data)
+                            generated = True
+                            break
+                elif openai_client is not None:
+                    generated = _save_generated_image(
+                        openai_client.images.generate(
+                            model=IMAGE_MODEL,
+                            prompt=prompt,
+                            size="1024x1536",
+                            quality=IMAGE_QUALITY,
+                        ) if not (character_ref and character_ref.exists()) else openai_client.images.edit(
                         model=IMAGE_MODEL,
-                        image=open(image_inputs[0], "rb"),
+                        image=open(character_ref, "rb"),
                         prompt=prompt,
                         size="1024x1536",
                     ),
-                    raw,
-                )
+                        raw,
+                    )
             except Exception as exc:
-                LOGGER.warning("Không tạo được ảnh AI cho cảnh %s: %s", index + 1, exc)
+                LOGGER.warning("Không tạo được ảnh %s cho cảnh %s: %s", image_provider, index + 1, exc)
+                if os.getenv("AI_IMAGES_REQUIRED", "false").strip().lower() in {"1", "true", "yes"}:
+                    raise
         if not generated:
             _offline_visual(scene, index, raw)
         composed = output_dir / f"scene_{index:02}.jpg"

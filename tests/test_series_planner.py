@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from series_planner import fallback_plan, normalize_plan, plan_series
 
@@ -27,3 +28,11 @@ def test_fallback_caps_content_to_a_structured_bible():
     assert plan["title"] == "Robot cứu hộ"
     assert len(plan["characters"]) >= 1
     assert all(len(row["visual_beats"]) >= 5 for row in plan["episodes"])
+
+
+def test_required_ai_never_disguises_failure_as_offline(monkeypatch):
+    monkeypatch.setenv("AI_REQUIRED", "true")
+    monkeypatch.setattr("series_planner._model_plan", lambda _prompt: (_ for _ in ()).throw(RuntimeError("Gemini unavailable")))
+
+    with pytest.raises(RuntimeError, match="Gemini unavailable"):
+        plan_series("AI thật", 2, "Lập trình viên")

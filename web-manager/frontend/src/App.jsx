@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { api, apiForm } from './api';
 import { useAuth } from './AuthContext';
-import { evidenceSummary } from './utils';
+import { evidenceSummary, safeJson } from './utils';
 import {
   AdminDashboardPage, AdminFeedbackPage, ProfilePage, ResearchNotebookPage,
   UserHomePage, VideoFeedbackWidget, YouTubePublishModal,
@@ -17,12 +17,12 @@ import {
 
 const taskDefaults = {
   title: '', description: '', topic: '', caption: '', hashtags: '',
-  status: 'TODO', priority: 'MEDIUM', dueDate: '', targetDurationSeconds: 60,
+  status: 'TODO', priority: 'MEDIUM', dueDate: '', targetDurationSeconds: 180,
   visualStyle: '', characterDescription: '', audioMode: 'narrated',
   videoProvider: 'kenburns', aspectRatio: '9:16', renderQuality: 'draft',
 };
 const campaignDefaults = {
-  name: '', theme: '', description: '', episodeCount: 5, targetDurationSeconds: 60,
+  name: '', theme: '', description: '', episodeCount: 5, targetDurationSeconds: 180,
   visualStyle: '', characterDescription: '', audience: '', cadence: 'MANUAL',
   productionEnabled: false, nextRunAt: '', status: 'PLANNING', audioMode: 'narrated',
   videoProvider: 'kenburns', aspectRatio: '9:16', renderQuality: 'draft',
@@ -32,6 +32,7 @@ const statusLabels = {
   DRAFT_REQUIRES_REVIEW: 'Chờ duyệt', DONE: 'Hoàn tất', FAILED: 'Lỗi',
 };
 const priorityLabels = { LOW: 'Thấp', MEDIUM: 'Trung bình', HIGH: 'Cao' };
+const campaignProvider = (campaign) => safeJson(campaign?.seriesPlanJson, {}).provider || 'chưa chạy';
 
 function RenderProfileFields({ form, setForm }) {
   return <div className="render-profile-grid">
@@ -224,25 +225,42 @@ function DashboardPage() {
 
 function TaskModal({ onClose, onCreated }) {
   const [form, setForm] = useState(taskDefaults);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const autoFill = () => {
-    const topic = form.topic || form.title || 'Bobo Adventure';
-    setForm({
-      ...form,
-      title: form.title || `${topic} — Tập 1`,
-      topic: topic,
-      description: `Video tự động từ chủ đề "${topic}". AI tự biên soạn 18 cảnh quay, hình ảnh và âm thanh.`,
-      targetDurationSeconds: 180,
-    });
-  };
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setError('');
-    try { const created = await api('/api/tasks', { method: 'POST', body: { ...form, dueDate: form.dueDate || null } }); onCreated(created); }
+    try {
+      const created = await api('/api/tasks', {
+        method: 'POST',
+        body: {
+          ...form,
+          title: form.title.trim() || form.topic.trim().slice(0, 160),
+          description: form.description.trim() || `Gemini sẽ nghiên cứu và biên soạn video 3 phút từ chủ đề: ${form.topic.trim()}`,
+          dueDate: form.dueDate || null,
+        },
+      });
+      await api(`/api/tasks/${created.id}/generate`, { method: 'POST' });
+      onCreated({ ...created, status: 'GENERATING' });
+    }
     catch (reason) { setError(reason.message); }
     finally { setBusy(false); }
   };
-  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW CONTENT</span><h2>Tạo video mới</h2></div><button type="button" onClick={onClose}><X /></button></div>{error && <div className="form-error">{error}</div>}<div style={{ background: '#1e1c38', padding: '10px 14px', borderRadius: '8px', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #4f46e5' }}><span>⚡ <b>Auto-fill bằng AI:</b> Chỉ cần nhập tên chủ đề bên dưới</span><button type="button" className="button light" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={autoFill}>Tự động điền</button></div><label>Ý tưởng / Chủ đề video<input required maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value, title: form.title || e.target.value })} placeholder="Chỉ cần nhập 1 câu: ví dụ Bobo Adventure, Chó cảnh sát..." /></label><label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: Bobo Adventure - Tập 1" /></label><label>Mô tả (Không bắt buộc)<textarea rows="2" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="AI tự sinh nếu để rỗng..." /></label><div className="form-grid"><label>Thời lượng mục tiêu<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: Number(e.target.value) })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút / 18 cảnh</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div><div className="form-grid"><label>Phong cách hình ảnh (Tùy chọn)<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="AI tự nghĩ nếu để trống..." /></label><label>Nhân vật / host (Tùy chọn)<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="AI tự nghĩ nếu để trống..." /></label></div><RenderProfileFields form={form} setForm={setForm} /><label>Hạn hoàn thành<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label><button className="button dark full" disabled={busy}>{busy ? 'Đang tạo...' : 'Tạo video ngay'} <ArrowRight /></button></form></div>;
+  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}>
+    <div className="modal-head"><div><span>GEMINI VIDEO AGENT</span><h2>Tạo video 3 phút</h2></div><button type="button" onClick={onClose}><X /></button></div>
+    {error && <div className="form-error">{error}</div>}
+    <label>Ý tưởng video<textarea autoFocus required rows="5" maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} placeholder="Ví dụ: Chó cảnh sát Bobo giải cứu một bạn nhỏ bị lạc và dạy 3 kỹ năng an toàn." /></label>
+    <div className="one-click-note"><Bot /><div><b>Gemini chạy thật sau khi bấm Generate</b><span>AI lập kịch bản 18 cảnh, tạo hình từng cảnh, giọng đọc, phụ đề và dựng draft để bạn review.</span></div></div>
+    <button type="button" className="advanced-toggle" onClick={() => setShowAdvanced(!showAdvanced)}><Settings2 /> {showAdvanced ? 'Ẩn tùy chỉnh' : 'Tùy chỉnh nâng cao'}</button>
+    {showAdvanced && <div className="advanced-campaign-fields">
+      <label>Tiêu đề<input maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Để trống để dùng ý tưởng làm tiêu đề" /></label>
+      <label>Mô tả<textarea rows="2" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+      <div className="form-grid"><label>Thời lượng<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: Number(e.target.value) })}><option value="60">60 giây / 6 cảnh</option><option value="90">90 giây / 9 cảnh</option><option value="180">3 phút / 18 cảnh</option></select></label><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
+      <div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Cinematic 3D animation..." /></label><label>Nhân vật / host<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} /></label></div>
+      <RenderProfileFields form={form} setForm={setForm} />
+    </div>}
+    <button className="button dark full" disabled={busy || !form.topic.trim()}>{busy ? 'Gemini đang bắt đầu pipeline...' : 'Generate video bằng AI'} <WandSparkles /></button>
+  </form></div>;
 }
 
 function VideosPage() {
@@ -524,7 +542,7 @@ function CampaignsPage() {
       <div className="campaign-card-head"><span className={`campaign-status ${campaign.status}`}>{campaign.status}</span><button onClick={() => remove(campaign)}><Trash2 /></button></div>
       <Link to={`/campaigns/${campaign.id}`}><h3>{campaign.name}</h3></Link><p>{campaign.description || campaign.theme}</p><div className="campaign-theme">{campaign.theme}</div>
       <div className="campaign-metrics"><span><Layers3 /><b>{campaign.episodeCount}</b><small>TẬP</small></span><span><Clock3 /><b>{campaign.targetDurationSeconds}s</b><small>MỖI TẬP</small></span><span><UserRound /><b>{campaign.ownerName}</b><small>CHỦ SỞ HỮU</small></span></div>
-      <div className="campaign-plan-state"><span className={campaign.seriesPlanJson ? 'ready' : ''}><Bot /> {campaign.seriesPlanJson ? 'Series Bible đã có' : 'Chưa tạo Series Bible'}</span><span><CalendarDays /> {campaign.productionEnabled ? `${campaign.cadence} · ${campaign.nextRunAt?.replace('T', ' ').slice(0, 16)}` : 'Lịch đang tắt'}</span></div>
+      <div className="campaign-plan-state"><span className={campaignProvider(campaign) === 'gemini' ? 'ready' : ''}><Bot /> Provider: {campaignProvider(campaign)}</span><span><CalendarDays /> {campaign.productionEnabled ? `${campaign.cadence} · ${campaign.nextRunAt?.replace('T', ' ').slice(0, 16)}` : 'Lịch đang tắt'}</span></div>
       <div className="campaign-action-grid"><Link className="primary" to={`/campaigns/${campaign.id}`}><Check /> Chọn campaign & duyệt tập</Link><button disabled={busyCampaign === campaign.id} onClick={() => generateAiSeries(campaign)}><RefreshCw /> Lập lại nội dung AI</button><button disabled={busyCampaign === campaign.id || campaign.status === 'COMPLETED'} onClick={() => toggleAutomation(campaign)}><CalendarDays /> {campaign.productionEnabled ? 'Tạm dừng lịch' : 'Bật lịch tạo draft'}</button></div>
     </article>)}</section><Pagination page={data.number} totalPages={data.totalPages} onChange={setPage} /></> : <EmptyState icon={Layers3} title="Chưa có campaign" description="Tạo series đầu tiên để sản xuất nội dung đều đặn." action={<button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo campaign</button>} />}
     {showCreate && <CampaignModal onClose={() => setShowCreate(false)} onCreated={(campaign) => { setShowCreate(false); navigate(`/campaigns/${campaign.id}`); }} />}
@@ -590,7 +608,7 @@ function CampaignDetailPage() {
     {error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}
     {campaign && <><section className="page-intro"><div><span>CAMPAIGN REVIEW</span><h2>{campaign.name}</h2><p>{campaign.theme}</p></div><span className={`campaign-status ${campaign.status}`}>{campaign.status}</span></section>
       <section className="pipeline-truth">
-        <article><Bot /><div><b>Nội dung</b><span>Gemini lập Series Bible và nội dung từng tập. Research Agent kiểm tra nguồn khi dựng.</span></div></article>
+        <article><Bot /><div><b>Nội dung · {campaignProvider(campaign)}</b><span>{campaignProvider(campaign) === 'gemini' ? 'Gemini đã lập Series Bible và nội dung từng tập.' : 'Campaign này chưa được Gemini xử lý; hãy lập lại nội dung AI.'} Research Agent kiểm tra nguồn khi dựng.</span></div></article>
         <article><Image /><div><b>Nhiều cảnh, không phải một ảnh</b><span>{campaign.targetDurationSeconds}s dự kiến khoảng {Math.max(4, Math.ceil(campaign.targetDurationSeconds / 10))} cảnh. AI ảnh thiếu cấu hình sẽ fallback sang visual offline cho từng cảnh.</span></div></article>
         <article><Film /><div><b>Google Flow / Veo</b><span>Google Login không phải Veo. Chỉ dùng Veo khi server có endpoint và API key riêng; nếu chưa có sẽ dùng Ken Burns + xfade.</span></div></article>
       </section>
