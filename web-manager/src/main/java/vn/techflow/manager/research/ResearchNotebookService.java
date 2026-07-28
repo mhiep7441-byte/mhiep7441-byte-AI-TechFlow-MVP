@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.techflow.manager.auth.AppUser;
 import vn.techflow.manager.auth.AuthService;
+import vn.techflow.manager.auth.UserRole;
 import vn.techflow.manager.task.TaskRepository;
 import vn.techflow.manager.task.WorkTask;
 
@@ -28,8 +29,9 @@ public class ResearchNotebookService {
     @Transactional(readOnly = true)
     public List<ResearchNotebookEntry> list(Authentication authentication, int limit) {
         AppUser owner = authService.current(authentication);
+        Long ownerId = owner.getRole() == UserRole.ADMIN ? null : owner.getId();
         int safeLimit = Math.min(Math.max(limit, 1), 100);
-        return tasks.findResearchNotebook(owner.getId(), PageRequest.of(0, safeLimit)).stream()
+        return tasks.findResearchNotebook(ownerId, PageRequest.of(0, safeLimit)).stream()
                 .map(this::entry)
                 .toList();
     }

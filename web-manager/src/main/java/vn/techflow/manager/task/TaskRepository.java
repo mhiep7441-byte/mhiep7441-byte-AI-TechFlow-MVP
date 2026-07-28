@@ -15,7 +15,7 @@ public interface TaskRepository extends JpaRepository<WorkTask, Long> {
 
     @Query("""
             select t from WorkTask t
-            where t.owner.id = :ownerId
+            where (:ownerId is null or t.owner.id = :ownerId)
               and t.researchJson <> '{}'
             order by t.updatedAt desc
             """)

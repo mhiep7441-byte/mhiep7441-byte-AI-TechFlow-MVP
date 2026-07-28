@@ -3,6 +3,7 @@ package vn.techflow.manager.auth;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -63,7 +64,8 @@ public class AuthService implements UserDetailsService {
             throw new UsernameNotFoundException("Bạn chưa đăng nhập");
         }
         if (authentication.getPrincipal() instanceof AppUser appUser) {
-            return users.findById(appUser.getId()).orElseThrow(() -> new UsernameNotFoundException("Tài khoản không tồn tại"));
+            AppUser user = users.findById(appUser.getId()).orElseThrow(() -> new UsernameNotFoundException("Tài khoản không tồn tại"));
+            return ensureEnabled(user);
         }
         if (authentication instanceof OAuth2AuthenticationToken oauth) {
             Object emailAttribute = oauth.getPrincipal().getAttribute("email");
@@ -77,15 +79,16 @@ public class AuthService implements UserDetailsService {
             String picture = pictureAttribute instanceof String value ? value : null;
             AppUser existing = users.findByEmailIgnoreCase(email).orElse(null);
             if (existing != null) {
-                if (!existing.isEnabled()) throw new IllegalArgumentException("Tài khoản đã bị khóa");
+                ensureEnabled(existing);
                 existing.setDisplayName(name.isBlank() ? existing.getDisplayName() : name);
                 existing.setAvatarUrl(picture);
                 return users.save(existing);
             }
             return users.save(newGoogleUser(email, name, picture));
         }
-        return users.findByEmailIgnoreCase(authentication.getName())
+        AppUser user = users.findByEmailIgnoreCase(authentication.getName())
                 .orElseThrow(() -> new UsernameNotFoundException("Tài khoản không tồn tại"));
+        return ensureEnabled(user);
     }
 
     public boolean isAdmin(Authentication authentication) {
@@ -97,6 +100,11 @@ public class AuthService implements UserDetailsService {
         AppUser user = current(authentication);
         user.setDisplayName(request.displayName().trim());
         return users.save(user);
+    }
+
+    private static AppUser ensureEnabled(AppUser user) {
+        if (!user.isEnabled()) throw new DisabledException("Tài khoản đã bị khóa");
+        return user;
     }
 
     private static AppUser newGoogleUser(String email, String name, String picture) {

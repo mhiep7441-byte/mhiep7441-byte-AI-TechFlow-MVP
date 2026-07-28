@@ -25,6 +25,14 @@ public class Campaign {
     private String visualStyle = "";
     @Column(nullable = false, length = 240)
     private String characterDescription = "";
+    @Column(nullable = false, length = 30)
+    private String audioMode = "narrated";
+    @Column(nullable = false, length = 30)
+    private String videoProvider = "kenburns";
+    @Column(nullable = false, length = 10)
+    private String aspectRatio = "9:16";
+    @Column(nullable = false, length = 20)
+    private String renderQuality = "draft";
     @Column(nullable = false, length = 160)
     private String audience = "";
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
@@ -67,6 +75,14 @@ public class Campaign {
     public void setVisualStyle(String visualStyle) { this.visualStyle = visualStyle; }
     public String getCharacterDescription() { return characterDescription; }
     public void setCharacterDescription(String characterDescription) { this.characterDescription = characterDescription; }
+    public String getAudioMode() { return audioMode; }
+    public void setAudioMode(String audioMode) { this.audioMode = audioMode; }
+    public String getVideoProvider() { return videoProvider; }
+    public void setVideoProvider(String videoProvider) { this.videoProvider = videoProvider; }
+    public String getAspectRatio() { return aspectRatio; }
+    public void setAspectRatio(String aspectRatio) { this.aspectRatio = aspectRatio; }
+    public String getRenderQuality() { return renderQuality; }
+    public void setRenderQuality(String renderQuality) { this.renderQuality = renderQuality; }
     public String getAudience() { return audience; }
     public void setAudience(String audience) { this.audience = audience; }
     public CampaignCadence getCadence() { return cadence; }

@@ -18,18 +18,29 @@ import {
 const taskDefaults = {
   title: '', description: '', topic: '', caption: '', hashtags: '',
   status: 'TODO', priority: 'MEDIUM', dueDate: '', targetDurationSeconds: 60,
-  visualStyle: '', characterDescription: '',
+  visualStyle: '', characterDescription: '', audioMode: 'narrated',
+  videoProvider: 'kenburns', aspectRatio: '9:16', renderQuality: 'draft',
 };
 const campaignDefaults = {
   name: '', theme: '', description: '', episodeCount: 5, targetDurationSeconds: 60,
   visualStyle: '', characterDescription: '', audience: '', cadence: 'MANUAL',
-  productionEnabled: false, nextRunAt: '', status: 'PLANNING',
+  productionEnabled: false, nextRunAt: '', status: 'PLANNING', audioMode: 'narrated',
+  videoProvider: 'kenburns', aspectRatio: '9:16', renderQuality: 'draft',
 };
 const statusLabels = {
   TODO: 'Ý tưởng', IN_PROGRESS: 'Đang làm', GENERATING: 'Đang dựng',
   DRAFT_REQUIRES_REVIEW: 'Chờ duyệt', DONE: 'Hoàn tất', FAILED: 'Lỗi',
 };
 const priorityLabels = { LOW: 'Thấp', MEDIUM: 'Trung bình', HIGH: 'Cao' };
+
+function RenderProfileFields({ form, setForm }) {
+  return <div className="render-profile-grid">
+    <label>Âm thanh<select value={form.audioMode} onChange={(e) => setForm({ ...form, audioMode: e.target.value })}><option value="narrated">Giọng đọc + phụ đề</option><option value="silent_animation">Hoạt hình không thoại + BGM</option></select></label>
+    <label>Chuyển động<select value={form.videoProvider} onChange={(e) => setForm({ ...form, videoProvider: e.target.value })}><option value="kenburns">Ken Burns nhanh</option><option value="seedance2_fast">Seedance 2 Fast</option><option value="veo">Google Veo</option></select></label>
+    <label>Khung hình<select value={form.aspectRatio} onChange={(e) => setForm({ ...form, aspectRatio: e.target.value })}><option value="9:16">Dọc 9:16</option><option value="16:9">Ngang 16:9</option></select></label>
+    <label>Chất lượng<select value={form.renderQuality} onChange={(e) => setForm({ ...form, renderQuality: e.target.value })}><option value="draft">Draft nhanh</option><option value="hd">HD</option><option value="2k">2K</option></select></label>
+  </div>;
+}
 
 function Loader({ label = 'Đang tải dữ liệu' }) {
   return <div className="loader-state"><span className="spinner" /><p>{label}</p></div>;
@@ -221,7 +232,7 @@ function TaskModal({ onClose, onCreated }) {
     catch (reason) { setError(reason.message); }
     finally { setBusy(false); }
   };
-  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW CONTENT</span><h2>Tạo video mới</h2></div><button type="button" onClick={onClose}><X /></button></div>{error && <div className="form-error">{error}</div>}<label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: 5 công cụ AI cho lập trình viên" /></label><label>Chủ đề video<input required maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></label><label>Mô tả<textarea rows="4" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><div className="form-grid"><label>Thời lượng mục tiêu<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: Number(e.target.value) })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div><div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Editorial motion, neon..." /></label><label>Nhân vật / host<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="Nữ host công nghệ, áo xanh..." /></label></div><label>Hạn hoàn thành<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label><button className="button dark full" disabled={busy}>{busy ? 'Đang lưu...' : 'Tạo công việc'} <ArrowRight /></button></form></div>;
+  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><span>NEW CONTENT</span><h2>Tạo video mới</h2></div><button type="button" onClick={onClose}><X /></button></div>{error && <div className="form-error">{error}</div>}<label>Tiêu đề<input required maxLength="160" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: 5 công cụ AI cho lập trình viên" /></label><label>Chủ đề video<input required maxLength="500" value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })} /></label><label>Mô tả<textarea rows="4" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><div className="form-grid"><label>Thời lượng mục tiêu<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: Number(e.target.value) })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút / 18 cảnh</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label><label>Ưu tiên<select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>{Object.entries(priorityLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div><div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Editorial motion, neon..." /></label><label>Nhân vật / host<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="Nữ host công nghệ, áo xanh..." /></label></div><RenderProfileFields form={form} setForm={setForm} /><label>Hạn hoàn thành<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label><button className="button dark full" disabled={busy}>{busy ? 'Đang lưu...' : 'Tạo công việc'} <ArrowRight /></button></form></div>;
 }
 
 function VideosPage() {
@@ -302,6 +313,7 @@ function VideoStudioPage() {
         <label>Mô tả<textarea rows="4" maxLength="2000" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
         <div className="form-grid"><label>Thời lượng mục tiêu<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: Number(e.target.value) })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label><label>AI đã dùng<input value={task.aiProvider || 'Chưa tạo'} readOnly /></label></div>
         <div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} /></label><label>Nhân vật / host<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} /></label></div>
+        <RenderProfileFields form={form} setForm={setForm} />
         <label>Caption<textarea rows="5" maxLength="2200" value={form.caption} onChange={(e) => setForm({ ...form, caption: e.target.value })} /></label>
         <label>Hashtags<input maxLength="500" value={form.hashtags} onChange={(e) => setForm({ ...form, hashtags: e.target.value })} placeholder="#AI #congnghe #TechFlowVN" /></label>
         <div className="form-grid">
@@ -409,6 +421,7 @@ function CampaignModal({ onClose, onCreated }) {
     <label>Khán giả mục tiêu<input maxLength="160" value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value })} placeholder="Ví dụ: Trẻ em 7-11 tuổi và phụ huynh" /></label>
     <div className="form-grid"><label>Số tập<input type="number" min="1" max="30" value={form.episodeCount} onChange={(e) => setForm({ ...form, episodeCount: e.target.value })} /></label><label>Thời lượng mỗi tập<select value={form.targetDurationSeconds} onChange={(e) => setForm({ ...form, targetDurationSeconds: e.target.value })}><option value="60">60 giây</option><option value="90">90 giây</option><option value="180">3 phút</option><option value="300">5 phút</option><option value="600">10 phút</option></select></label></div>
     <div className="form-grid"><label>Phong cách hình ảnh<input maxLength="240" value={form.visualStyle} onChange={(e) => setForm({ ...form, visualStyle: e.target.value })} placeholder="Cinematic editorial, lilac..." /></label><label>Nhân vật xuyên suốt<input maxLength="240" value={form.characterDescription} onChange={(e) => setForm({ ...form, characterDescription: e.target.value })} placeholder="Host nữ kỹ sư AI..." /></label></div>
+    <RenderProfileFields form={form} setForm={setForm} />
     <div className="automation-box"><div><Bot /><span><b>Lịch sản xuất bản nháp</b><small>Scheduler chỉ dựng tập kế tiếp; không tự đăng TikTok/YouTube.</small></span><input type="checkbox" checked={form.productionEnabled} onChange={(e) => setForm({ ...form, productionEnabled: e.target.checked, cadence: e.target.checked && form.cadence === 'MANUAL' ? 'DAILY' : form.cadence })} /></div>{form.productionEnabled && <div className="form-grid"><label>Nhịp sản xuất<select value={form.cadence} onChange={(e) => setForm({ ...form, cadence: e.target.value })}><option value="HOURLY">Mỗi giờ</option><option value="DAILY">Mỗi ngày</option></select></label><label>Bắt đầu lúc<input type="datetime-local" value={form.nextRunAt} onChange={(e) => setForm({ ...form, nextRunAt: e.target.value })} /></label></div>}</div>
     <button className="button dark full" disabled={busy}>{busy ? 'Đang tạo...' : 'Tạo campaign'} <ArrowRight /></button>
   </form></div>;
@@ -466,6 +479,9 @@ function CampaignsPage() {
         name: campaign.name, theme: campaign.theme, description: campaign.description,
         episodeCount: campaign.episodeCount, targetDurationSeconds: campaign.targetDurationSeconds,
         visualStyle: campaign.visualStyle, characterDescription: campaign.characterDescription,
+        characterImageUrl: campaign.characterImageUrl, characterReferencePrompt: campaign.characterReferencePrompt,
+        audioMode: campaign.audioMode, videoProvider: campaign.videoProvider,
+        aspectRatio: campaign.aspectRatio, renderQuality: campaign.renderQuality,
         audience: campaign.audience, status: campaign.status,
         cadence: enabled && campaign.cadence === 'MANUAL' ? 'DAILY' : campaign.cadence,
         productionEnabled: enabled, nextRunAt: enabled ? new Date().toISOString().slice(0, 19) : null,

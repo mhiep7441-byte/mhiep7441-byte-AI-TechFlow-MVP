@@ -72,6 +72,8 @@ class VideoPlan:
     character_image_url: str = ""
     audio_mode: str = "narrated"
     video_provider: str = "kenburns"
+    aspect_ratio: str = "9:16"
+    render_quality: str = "draft"
 
 
 @dataclass
@@ -97,7 +99,20 @@ def normalized_duration(value: int | str | None) -> int:
 
 def scene_limit(target_duration_seconds: int) -> int:
     duration = normalized_duration(target_duration_seconds)
-    return min(30, max(MAX_SCENES, (duration + 11) // 12))
+    return min(30, max(MAX_SCENES, (duration + 9) // 10))
+
+
+def apply_render_profile(aspect_ratio: str, render_quality: str) -> None:
+    global WIDTH, HEIGHT
+    profiles = {
+        ("9:16", "draft"): (540, 960),
+        ("9:16", "hd"): (720, 1280),
+        ("9:16", "2k"): (1440, 2560),
+        ("16:9", "draft"): (960, 540),
+        ("16:9", "hd"): (1280, 720),
+        ("16:9", "2k"): (2560, 1440),
+    }
+    WIDTH, HEIGHT = profiles.get((aspect_ratio, render_quality), profiles[("9:16", "draft")])
 
 
 def fallback_plan(
@@ -221,6 +236,8 @@ def generate_plan(
     target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
     visual_style: str = "",
     character_description: str = "",
+    audio_mode: str = "narrated",
+    aspect_ratio: str = "9:16",
 ) -> VideoPlan:
     duration = normalized_duration(target_duration_seconds)
     maximum_scenes = scene_limit(duration)
@@ -235,14 +252,17 @@ Research brief (chỉ dùng dữ kiện có trong đây):
 
 Định hướng hình ảnh do người dùng chọn: {visual_style or "(AI tự đề xuất)"}
 Nhân vật/host do người dùng chọn: {character_description or "(AI tự đề xuất)"}
+Chế độ âm thanh: {audio_mode}
+Tỷ lệ khung hình: {aspect_ratio}
 
 Yêu cầu:
-- Từ 4 đến {maximum_scenes} cảnh, hook mạnh trong 2 giây đầu; nhịp tự nhiên, không giật tít sai.
+- Tạo đúng {maximum_scenes} cảnh, hook mạnh trong 2 giây đầu; nhịp tự nhiên, không giật tít sai.
+- Với silent_animation, narration để trống; diễn biến nằm trong character_action, visual_prompt và on_screen_text.
 - Nội dung phải đủ sâu cho thời lượng mục tiêu, có mở bài, diễn tiến và kết luận; không lặp ý để kéo dài.
 - Tạo một nhân vật nhất quán xuyên suốt phù hợp với chủ đề; mô tả ngoại hình cụ thể trong trường character.
 - Nếu chủ đề là câu chuyện phiêu lưu, trẻ em, giáo dục, v.v., hãy sáng tạo nhân vật phù hợp (ví dụ: chú chó, robot, bé gái, siêu anh hùng...).
 - Với video dài (trên 120 giây), tạo đủ cảnh để mỗi cảnh khoảng 8-12 giây, có cốt truyện rõ ràng: mở đầu, thắt nút, cao trào, kết thúc.
-- Mỗi cảnh có bối cảnh, hành động nhân vật, chuyển động camera và visual_prompt đủ chi tiết để tạo ảnh dọc 9:16.
+- Mỗi cảnh có bối cảnh, hành động nhân vật, chuyển động camera và visual_prompt đủ chi tiết cho khung {aspect_ratio}.
 - Mỗi khẳng định thực tế phải gắn source_ids hợp lệ. Nếu research offline, nói rõ đây là bản minh họa khái niệm.
 - Câu đọc tự nhiên, ngắn; on_screen_text tối đa 12 từ; không sao chép nguyên văn nguồn.
 - Caption không quá 350 ký tự; 4-7 hashtag liên quan, không spam.
@@ -274,7 +294,8 @@ Yêu cầu:
                 duration_hint=max(3.5, min(float(item.get("duration_hint", 6)), 12.0)),
             )
             for index, item in enumerate(data.get("scenes", [])[:maximum_scenes])
-            if isinstance(item, dict) and str(item.get("narration", "")).strip()
+            if isinstance(item, dict)
+            and (audio_mode == "silent_animation" or str(item.get("narration", "")).strip())
         ]
         if len(scenes) < 4:
             raise ValueError("Storyboard cần ít nhất bốn cảnh")
@@ -775,7 +796,7 @@ def image_to_video_clip(provider: str, image: Path, scene: Scene, duration: floa
     payload = json.dumps({
         "prompt": f"{scene.visual_prompt}. {scene.character_action}. {scene.camera_motion}. Smooth 9:16 animation.",
         "duration_seconds": max(5, min(10, round(duration))),
-        "aspect_ratio": "9:16",
+        "aspect_ratio": "16:9" if WIDTH > HEIGHT else "9:16",
         "image_base64": base64.b64encode(image.read_bytes()).decode("ascii"),
     }).encode("utf-8")
     request = urllib.request.Request(
@@ -902,7 +923,8 @@ def quality_control(plan: VideoPlan, research: ResearchBrief, fact_check: FactCh
 
 def upload_video(video: Path, job_id: str) -> str:
     if not os.getenv("CLOUDINARY_URL", "").strip():
-        raise RuntimeError("Chưa cấu hình CLOUDINARY_URL trên server.")
+        LOGGER.warning("Chưa cấu hình CLOUDINARY_URL; trả về file URL cục bộ.")
+        return video.resolve().as_uri()
     import cloudinary
     import cloudinary.uploader
 
@@ -911,7 +933,7 @@ def upload_video(video: Path, job_id: str) -> str:
         str(video), resource_type="video", public_id=f"techflow/{job_id}", overwrite=True
     )
     original_url = str(result["secure_url"])
-    delivery_transform = "c_scale,h_1920,w_1080,q_auto:eco"
+    delivery_transform = f"c_limit,h_{HEIGHT},w_{WIDTH},q_auto:eco"
     return original_url.replace("/video/upload/", f"/video/upload/{delivery_transform}/", 1)
 
 
@@ -923,23 +945,35 @@ def run(
     character_image_url: str = "",
     audio_mode: str = "",
     video_provider: str = "",
+    aspect_ratio: str = "",
+    render_quality: str = "",
 ) -> dict[str, Any]:
     job_id = f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{slugify(topic)}"
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True)
     research = research_topic(topic)
+    requested_audio_mode = (audio_mode or os.getenv("VIDEO_AUDIO_MODE", "narrated")).strip()
+    requested_aspect_ratio = (aspect_ratio or os.getenv("VIDEO_ASPECT_RATIO", "9:16")).strip()
     plan = generate_plan(
         topic,
         research,
         target_duration_seconds,
         visual_style,
         character_description,
+        requested_audio_mode,
+        requested_aspect_ratio,
     )
     plan.character_image_url = character_image_url
-    requested_audio_mode = (audio_mode or os.getenv("VIDEO_AUDIO_MODE", "narrated")).strip()
     requested_video_provider = (video_provider or os.getenv("VIDEO_PROVIDER", "kenburns")).strip()
+    requested_render_quality = (render_quality or os.getenv("VIDEO_RENDER_QUALITY", "draft")).strip()
     plan.audio_mode = requested_audio_mode if requested_audio_mode in {"narrated", "silent_animation"} else "narrated"
     plan.video_provider = requested_video_provider if requested_video_provider in {"seedance2_fast", "veo", "kenburns"} else "kenburns"
+    plan.aspect_ratio = requested_aspect_ratio if requested_aspect_ratio in {"9:16", "16:9"} else "9:16"
+    plan.render_quality = requested_render_quality if requested_render_quality in {"draft", "hd", "2k"} else "draft"
+    if plan.audio_mode == "silent_animation":
+        for scene in plan.scenes:
+            scene.narration = ""
+    apply_render_profile(plan.aspect_ratio, plan.render_quality)
     # Download character reference for visual consistency
     character_ref = None
     if character_image_url:
@@ -986,6 +1020,8 @@ if __name__ == "__main__":
     parser.add_argument("--generate-character", action="store_true", help="Chỉ tạo ảnh character reference rồi thoát")
     parser.add_argument("--audio-mode", choices=["narrated", "silent_animation"], default=os.getenv("VIDEO_AUDIO_MODE", "narrated"))
     parser.add_argument("--video-provider", choices=["seedance2_fast", "veo", "kenburns"], default=os.getenv("VIDEO_PROVIDER", "kenburns"))
+    parser.add_argument("--aspect-ratio", choices=["9:16", "16:9"], default=os.getenv("VIDEO_ASPECT_RATIO", "9:16"))
+    parser.add_argument("--render-quality", choices=["draft", "hd", "2k"], default=os.getenv("VIDEO_RENDER_QUALITY", "draft"))
     args = parser.parse_args()
     try:
         if args.generate_character:
@@ -1004,6 +1040,8 @@ if __name__ == "__main__":
             args.character_image,
             args.audio_mode,
             args.video_provider,
+            args.aspect_ratio,
+            args.render_quality,
         )
         metadata = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         print(f"VIDEO_METADATA_B64={base64.urlsafe_b64encode(metadata).decode('ascii')}", flush=True)

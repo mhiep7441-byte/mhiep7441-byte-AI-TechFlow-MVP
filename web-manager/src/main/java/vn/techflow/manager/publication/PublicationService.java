@@ -56,13 +56,10 @@ public class PublicationService {
     private Publication save(Publication item, PublicationRequest request, Authentication authentication) {
         item.setTask(taskService.getAccessible(request.taskId(), authentication));
         item.setPlatform(request.platform());
-        item.setStatus(request.status() == null ? PublicationStatus.PENDING : request.status());
+        item.setStatus(clientManagedStatus(request.status()));
         item.setScheduledAt(request.scheduledAt());
-        item.setExternalId(request.externalId());
+        item.setExternalId("");
         item.setNote(request.note() == null ? "" : request.note().trim());
-        if (item.getStatus() == PublicationStatus.PUBLISHED && item.getPublishedAt() == null) {
-            item.setPublishedAt(LocalDateTime.now());
-        }
         return repository.save(item);
     }
 
@@ -139,5 +136,11 @@ public class PublicationService {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy lịch đăng"));
         taskService.getAccessible(item.getTask().getId(), authentication);
         return item;
+    }
+
+    private static PublicationStatus clientManagedStatus(PublicationStatus requested) {
+        if (requested == null || requested == PublicationStatus.PENDING) return PublicationStatus.PENDING;
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Trạng thái xuất bản chỉ được cập nhật qua bước duyệt hoặc callback nền tảng");
     }
 }
