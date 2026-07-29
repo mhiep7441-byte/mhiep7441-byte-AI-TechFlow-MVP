@@ -47,6 +47,7 @@ export function useTechFlowData(refreshInterval = 5000) {
     updateTask: (task, status) => mutate(`/api/tasks/${task.id}`, json('PUT', { ...task, status })),
     deleteTask: (id) => mutate(`/api/tasks/${id}`, { method: 'DELETE' }),
     generateDraft: (id) => mutate(`/api/tasks/${id}/generate`, { method: 'POST' }),
+    renderVideo: (id) => mutate(`/api/tasks/${id}/render`, { method: 'POST' }),
     createPublication: (publication) => mutate('/api/publications', json('POST', publication)),
     deletePublication: (id) => mutate(`/api/publications/${id}`, { method: 'DELETE' }),
   }), [mutate]);

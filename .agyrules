@@ -1,0 +1,25 @@
+# TechFlow / Inky Studio - Phase 2 AI Rules
+
+When working on this project, adhere strictly to the following architectural constraints:
+
+## 1. Job Orchestration & Execution
+- **NO monolithic generation**: Never write code that executes the entire video generation pipeline in a single blocking thread or function.
+- **Queue System**: Use PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` for job queues. Do not use Redis.
+- **Idempotency**: All jobs must be restartable, retryable, and idempotent.
+- **Python Workers**: Write Python logic in modular files under `worker-python/app/` (e.g., `jobs/`, `providers/`, `media/`), not in a single massive script.
+
+## 2. API & Providers
+- **Provider Interfaces**: Always code against abstract protocols for Text, Image, Voice, and Storage providers. Never hardcode Gemini or OpenAI directly in business logic.
+- **Explicit Fallback**: Do not silently fallback to placeholder images in production. Adhere to `AI_IMAGES_REQUIRED=true` and `ALLOW_OFFLINE_PLACEHOLDERS=false`.
+
+## 3. Storage & Assets
+- **Cloudinary**: All permanent assets (audio, images, videos) must be uploaded to Cloudinary. Do not rely on local `/tmp` storage beyond the lifecycle of a single job step.
+- **Database Tracking**: Every asset, prompt version, and usage record (token cost) must be saved to PostgreSQL.
+
+## 4. Render & Media
+- **Memory Limits**: The server runs on a 512MB RAM constraint (Render Free Tier). Optimize JVM flags (`-Xmx256m -XX:MaxMetaspaceSize=128m`) and limit FFmpeg threads (`-threads 1`).
+- **FFmpeg Profiles**: Maintain separate profiles for Draft (fast/720p) and Final (medium/1080p). Always run `ffprobe` to validate outputs before marking jobs complete.
+
+## 5. Development Principles
+- **No Data Loss**: Never overwrite an approved script, image, or audio file without explicit user action.
+- **Milestone Commits**: Implement features in isolated milestones. Run backend (`mvn test`) and frontend (`npm test`) tests before committing.

@@ -5,7 +5,7 @@ import {
   CirclePlay, Clock3, Copy, ExternalLink, Film, Gauge, Image, LayoutDashboard, ListFilter,
   LogOut, Menu, MoreHorizontal, PencilLine, Plus, RefreshCw, Search, Send, Settings2,
   ShieldCheck, Sparkles, Trash2, UserRound, UsersRound, WandSparkles, X, Layers3, Bot,
-  Upload, BookOpen, Star,
+  Upload, BookOpen, Star, Play
 } from 'lucide-react';
 import { api, apiForm } from './api';
 import { useAuth } from './AuthContext';
@@ -320,7 +320,11 @@ function VideoStudioPage() {
     catch (r) { setError(r.message); }
   };
   const regenerate = async () => {
-    try { await api(`/api/tasks/${id}/generate`, { method: 'POST' }); setMessage('Đã bắt đầu tạo lại video.'); load(); }
+    try { await api(`/api/tasks/${id}/generate`, { method: 'POST' }); setMessage('Đã bắt đầu tạo kịch bản.'); load(); }
+    catch (r) { setError(r.message); }
+  };
+  const renderVideo = async () => {
+    try { await api(`/api/tasks/${id}/render`, { method: 'POST' }); setMessage('Đã bắt đầu render video.'); load(); }
     catch (r) { setError(r.message); }
   };
   if (!task && !error) return <Loader />;
@@ -330,7 +334,8 @@ function VideoStudioPage() {
     {error && <div className="alert error">{error}</div>}
     {message && <div className="alert success">{message}</div>}
     <div className="inky-studio-header"><div><small>VIDEO STUDIO • ID #{task.id}</small><h2>{task.title}</h2><span className={`status ${task.status}`}>{statusLabels[task.status]}</span></div><div className="header-actions">
-      <button className="button outline" onClick={regenerate}><RefreshCw /> Tạo lại</button>
+      <button className="button outline" onClick={regenerate}><RefreshCw /> Tạo lại kịch bản</button>
+      {task.status === 'DRAFT_REQUIRES_REVIEW' && <button className="button dark" onClick={renderVideo}><Play /> Render Video</button>}
       {task.outputPath && <button className="button outline" onClick={() => setShowYoutubePublish(true)}><Upload /> YouTube</button>}
       <button className="button outline" onClick={remove}><Trash2 /> Xóa</button>
     </div></div>

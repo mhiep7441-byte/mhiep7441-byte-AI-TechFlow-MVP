@@ -30,18 +30,21 @@ public class TaskService {
     private final Path projectDirectory;
     private final String pythonCommand;
     private final String workerScript;
+    private final JobService jobService;
 
     public TaskService(
             TaskRepository repository,
             AuthService authService,
             @Value("${techflow.project-dir:..}") String projectDirectory,
             @Value("${techflow.python-command:python}") String pythonCommand,
-            @Value("${techflow.worker-script:video_worker.py}") String workerScript) {
+            @Value("${techflow.worker-script:video_worker.py}") String workerScript,
+            JobService jobService) {
         this.repository = repository;
         this.authService = authService;
         this.projectDirectory = Path.of(projectDirectory).toAbsolutePath().normalize();
         this.pythonCommand = pythonCommand;
         this.workerScript = workerScript;
+        this.jobService = jobService;
     }
 
     @Transactional(readOnly = true)
@@ -111,64 +114,60 @@ public class TaskService {
     public CompletableFuture<Void> generate(Long id) {
         WorkTask task = internalGet(id);
         try {
-            List<String> command = new ArrayList<>(List.of(
-                    pythonCommand, workerScript, "--topic", task.getTopic(),
-                    "--duration", String.valueOf(task.getTargetDurationSeconds())
-            ));
-            if (!task.getVisualStyle().isBlank()) {
-                command.addAll(List.of("--visual-style", task.getVisualStyle()));
-            }
-            if (!task.getCharacterDescription().isBlank()) {
-                command.addAll(List.of("--character", task.getCharacterDescription()));
-            }
-            if (task.getCharacterImageUrl() != null && !task.getCharacterImageUrl().isBlank()) {
-                command.addAll(List.of("--character-image", task.getCharacterImageUrl()));
-            }
-            command.addAll(List.of(
-                    "--audio-mode", task.getAudioMode(),
-                    "--video-provider", task.getVideoProvider(),
-                    "--aspect-ratio", task.getAspectRatio(),
-                    "--render-quality", task.getRenderQuality()
-            ));
-            Process process = new ProcessBuilder(command)
-                    .directory(projectDirectory.toFile())
-                    .redirectErrorStream(true)
-                    .start();
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            int exitCode = process.waitFor();
-            if (exitCode != 0) throw new IOException("Pipeline lỗi " + exitCode + ": " + tail(output, 2500));
-            WorkerMetadata metadata = WorkerMetadata.parse(output);
-            task.setOutputPath(metadata.videoUrl());
-            task.setResearchJson(metadata.researchJson());
-            task.setStoryboardJson(metadata.storyboardJson());
-            task.setSourceUrls(metadata.sourceUrls());
-            task.setFactCheckStatus(metadata.factCheckStatus());
-            task.setQualityScore(metadata.qualityScore());
-            task.setAiProvider(metadata.aiProvider());
-            task.setScriptUrl(metadata.scriptUrl());
-            task.setStoryboardUrl(metadata.storyboardUrl());
-            task.setScenePromptsUrl(metadata.scenePromptsUrl());
-            task.setImageSetUrl(metadata.imageSetUrl());
-            task.setNarrationUrl(metadata.narrationUrl());
-            task.setSubtitleUrl(metadata.subtitleUrl());
-            task.setProjectArchiveUrl(metadata.projectArchiveUrl());
-            task.setAssetManifestUrl(metadata.assetManifestUrl());
-            task.setWorkflowState("COMPLETED");
-            if (task.getCaption().isBlank()) {
-                task.setCaption(metadata.caption().isBlank() ? task.getTitle() : metadata.caption());
-            }
-            if (task.getHashtags().isBlank()) {
-                task.setHashtags(metadata.hashtags().isBlank()
-                        ? "#AI #congnghe #laptrinh #TechFlowVN"
-                        : metadata.hashtags());
-            }
-            task.setStatus(TaskStatus.DRAFT_REQUIRES_REVIEW);
+            String inputJson = String.format("{\"episode_id\": %d, \"topic\": \"%s\", \"duration\": %d, \"visual_style\": \"%s\", \"character\": \"%s\", \"character_image\": \"%s\", \"audio_mode\": \"%s\", \"video_provider\": \"%s\", \"aspect_ratio\": \"%s\", \"render_quality\": \"%s\"}", 
+                    task.getId(), 
+                    task.getTopic().replace("\"", "\\\""), 
+                    task.getTargetDurationSeconds(), 
+                    task.getVisualStyle().replace("\"", "\\\""), 
+                    task.getCharacterDescription().replace("\"", "\\\""), 
+                    task.getCharacterImageUrl() == null ? "" : task.getCharacterImageUrl().replace("\"", "\\\""), 
+                    task.getAudioMode(), 
+                    task.getVideoProvider(), 
+                    task.getAspectRatio(), 
+                    task.getRenderQuality());
+            
+            vn.techflow.manager.task.entity.WorkflowRun run = jobService.createWorkflow(task.getCampaignId(), task.getId());
+            jobService.enqueueJob(run.getId(), task.getId(), "GENERATE_SCRIPT", inputJson, 5);
+            
+            task.setWorkflowState("QUEUED_FOR_SCRIPT");
+            repository.save(task);
         } catch (Exception exception) {
-            if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
-            task.setStatus(TaskStatus.FAILED);
-            task.setErrorMessage(tail(exception.getMessage(), 3500));
+            task.setWorkflowState("FAILED");
+            task.setStatus(TaskStatus.ERROR);
+            repository.save(task);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi khi đẩy job vào queue", exception);
         }
-        repository.save(task);
+        return CompletableFuture.completedFuture(null);
+    }
+    
+    @Async
+    public CompletableFuture<Void> render(Long id) {
+        WorkTask task = internalGet(id);
+        try {
+            String inputJson = String.format("{\"episode_id\": %d, \"topic\": \"%s\", \"duration\": %d, \"visual_style\": \"%s\", \"character\": \"%s\", \"character_image\": \"%s\", \"audio_mode\": \"%s\", \"video_provider\": \"%s\", \"aspect_ratio\": \"%s\", \"render_quality\": \"%s\"}", 
+                    task.getId(), 
+                    task.getTopic().replace("\"", "\\\""), 
+                    task.getTargetDurationSeconds(), 
+                    task.getVisualStyle().replace("\"", "\\\""), 
+                    task.getCharacterDescription().replace("\"", "\\\""), 
+                    task.getCharacterImageUrl() == null ? "" : task.getCharacterImageUrl().replace("\"", "\\\""), 
+                    task.getAudioMode(), 
+                    task.getVideoProvider(), 
+                    task.getAspectRatio(), 
+                    task.getRenderQuality());
+            
+            vn.techflow.manager.task.entity.WorkflowRun run = jobService.createWorkflow(task.getCampaignId(), task.getId());
+            jobService.enqueueJob(run.getId(), task.getId(), "GENERATE_VIDEO", inputJson, 7);
+            
+            task.setWorkflowState("QUEUED_FOR_VIDEO");
+            task.setStatus(TaskStatus.GENERATING);
+            repository.save(task);
+        } catch (Exception exception) {
+            task.setWorkflowState("FAILED");
+            task.setStatus(TaskStatus.ERROR);
+            repository.save(task);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi khi đẩy job render vào queue", exception);
+        }
         return CompletableFuture.completedFuture(null);
     }
 

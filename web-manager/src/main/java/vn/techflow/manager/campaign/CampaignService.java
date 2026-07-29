@@ -59,13 +59,15 @@ public class CampaignService {
     private final String pythonCommand;
     private final String workerScript;
     private final RestClient restClient;
+    private final vn.techflow.manager.task.JobService jobService;
 
     public CampaignService(CampaignRepository campaigns, TaskRepository tasks, AuthService authService,
                            SeriesPlannerService planner, ObjectMapper json,
                            @Value("${techflow.project-dir:..}") String projectDirectory,
                            @Value("${techflow.python-command:python}") String pythonCommand,
                            @Value("${techflow.worker-script:video_worker.py}") String workerScript,
-                           RestClient.Builder restClientBuilder) {
+                           RestClient.Builder restClientBuilder,
+                           vn.techflow.manager.task.JobService jobService) {
         this.campaigns = campaigns;
         this.tasks = tasks;
         this.authService = authService;
@@ -75,6 +77,7 @@ public class CampaignService {
         this.pythonCommand = pythonCommand;
         this.workerScript = workerScript;
         this.restClient = restClientBuilder.build();
+        this.jobService = jobService;
     }
 
     @Transactional(readOnly = true)
@@ -120,31 +123,20 @@ public class CampaignService {
         if (prompt.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cần mô tả nhân vật để tạo reference sheet");
         }
+        
         try {
-            List<String> command = new ArrayList<>(List.of(
-                    pythonCommand, workerScript, "--topic", campaign.getTheme(),
-                    "--visual-style", clean(campaign.getVisualStyle()),
-                    "--character", prompt, "--generate-character"
-            ));
-            Process process = new ProcessBuilder(command)
-                    .directory(projectDirectory.toFile())
-                    .redirectErrorStream(true)
-                    .start();
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            int exitCode = process.waitFor();
-            if (exitCode != 0) throw new IOException("Worker lỗi " + exitCode + ": " + tail(output, 2500));
-            String url = parseCharacterUrl(output).orElseThrow(() ->
-                    new IOException("Worker không trả về CHARACTER_IMAGE_URL"));
+            String inputJson = String.format("{\"campaign_id\": %d, \"prompt\": \"%s\", \"theme\": \"%s\", \"visual_style\": \"%s\"}", 
+                    campaign.getId(), prompt.replace("\"", "\\\""), 
+                    clean(campaign.getTheme()).replace("\"", "\\\""), 
+                    clean(campaign.getVisualStyle()).replace("\"", "\\\""));
+                    
+            vn.techflow.manager.task.entity.WorkflowRun run = jobService.createWorkflow(campaign.getId(), null);
+            jobService.enqueueJob(run.getId(), null, "GENERATE_CHARACTER", inputJson, 10);
+            
             campaign.setCharacterDescription(prompt);
-            campaign.setCharacterReferencePrompt(prompt);
-            campaign.setCharacterImageUrl(url);
-            syncOpenEpisodes(campaign);
             return campaigns.save(campaign);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Tạo nhân vật bị gián đoạn", exception);
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, tail(exception.getMessage(), 3500), exception);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi khi đẩy job vào queue", exception);
         }
     }
 

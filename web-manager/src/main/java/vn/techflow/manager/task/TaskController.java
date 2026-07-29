@@ -57,6 +57,13 @@ public class TaskController {
     public Map<String, String> generate(@PathVariable Long id, Authentication authentication) {
         service.prepareGeneration(id, authentication);
         service.generate(id);
-        return Map.of("message", "Đã đưa video vào pipeline");
+        return Map.of("message", "Đã đưa video vào pipeline kịch bản");
+    }
+    
+    @PostMapping("/{id}/render")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public Map<String, String> render(@PathVariable Long id, Authentication authentication) {
+        service.render(id);
+        return Map.of("message", "Đã đưa video vào pipeline render");
     }
 }
