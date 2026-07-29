@@ -28,7 +28,7 @@ services:
       - key: TECHFLOW_PYTHON_COMMAND
         value: python3
       - key: TECHFLOW_WORKER_SCRIPT
-        value: video_worker.py
+        value: inky_worker.py
       - key: OUTPUT_DIR
         value: /tmp/techflow-outputs
       - key: CHANNEL_NAME

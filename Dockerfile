@@ -27,4 +27,4 @@ COPY series_planner.py ./series_planner.py
 COPY topics.txt ./topics.txt
 USER techflow
 EXPOSE 8080
-CMD ["sh", "-c", "if [ -n \"$DATABASE_URL_RAW\" ]; then db_target=\"${DATABASE_URL_RAW#postgresql://}\"; export DATABASE_URL=\"jdbc:postgresql://${db_target#*@}\"; fi; if [ -n \"$PORT\" ]; then export SERVER_PORT=\"$PORT\"; fi; exec java -Xms32m -Xmx128m -Xss256k -XX:MaxMetaspaceSize=72m -XX:ReservedCodeCacheSize=20m -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -jar /app/app.jar"]
+CMD ["sh", "-c", "if [ -n \"$DATABASE_URL_RAW\" ]; then db_target=\"${DATABASE_URL_RAW#postgresql://}\"; export DATABASE_URL=\"jdbc:postgresql://${db_target#*@}\"; fi; if [ -n \"$PORT\" ]; then export SERVER_PORT=\"$PORT\"; fi; exec java -Xms64m -Xmx160m -Xss256k -XX:MaxMetaspaceSize=80m -XX:ReservedCodeCacheSize=24m -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -jar /app/app.jar"]
