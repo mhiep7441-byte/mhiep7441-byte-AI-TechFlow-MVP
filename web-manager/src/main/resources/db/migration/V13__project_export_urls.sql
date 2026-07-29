@@ -1,0 +1,9 @@
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS script_url TEXT;
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS storyboard_url TEXT;
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS scene_prompts_url TEXT;
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS image_set_url TEXT;
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS narration_url TEXT;
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS subtitle_url TEXT;
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS project_archive_url TEXT;
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS asset_manifest_url TEXT;
+ALTER TABLE work_tasks ADD COLUMN IF NOT EXISTS workflow_state VARCHAR(80) DEFAULT 'OUTLINE_READY';

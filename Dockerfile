@@ -20,6 +20,7 @@ COPY worker-requirements.txt ./worker-requirements.txt
 RUN pip3 install --no-cache-dir --break-system-packages -r worker-requirements.txt
 COPY --from=backend /workspace/web-manager/target/web-manager-1.1.0.jar ./app.jar
 COPY video_worker.py ./video_worker.py
+COPY inky_worker.py ./inky_worker.py
 COPY research_agent.py ./research_agent.py
 COPY content_guard.py ./content_guard.py
 COPY series_planner.py ./series_planner.py

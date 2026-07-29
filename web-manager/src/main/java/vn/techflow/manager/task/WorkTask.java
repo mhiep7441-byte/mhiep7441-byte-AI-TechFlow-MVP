@@ -60,6 +60,24 @@ public class WorkTask {
     private String renderQuality = "draft";
     @Column(columnDefinition = "TEXT")
     private String characterImageUrl;
+    @Column(columnDefinition = "TEXT")
+    private String scriptUrl;
+    @Column(columnDefinition = "TEXT")
+    private String storyboardUrl;
+    @Column(columnDefinition = "TEXT")
+    private String scenePromptsUrl;
+    @Column(columnDefinition = "TEXT")
+    private String imageSetUrl;
+    @Column(columnDefinition = "TEXT")
+    private String narrationUrl;
+    @Column(columnDefinition = "TEXT")
+    private String subtitleUrl;
+    @Column(columnDefinition = "TEXT")
+    private String projectArchiveUrl;
+    @Column(columnDefinition = "TEXT")
+    private String assetManifestUrl;
+    @Column(length = 80)
+    private String workflowState = "OUTLINE_READY";
     @JsonIgnore @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
     private AppUser owner;
@@ -124,6 +142,24 @@ public class WorkTask {
     public void setRenderQuality(String renderQuality) { this.renderQuality = renderQuality; }
     public String getCharacterImageUrl() { return characterImageUrl; }
     public void setCharacterImageUrl(String characterImageUrl) { this.characterImageUrl = characterImageUrl; }
+    public String getScriptUrl() { return scriptUrl; }
+    public void setScriptUrl(String scriptUrl) { this.scriptUrl = scriptUrl; }
+    public String getStoryboardUrl() { return storyboardUrl; }
+    public void setStoryboardUrl(String storyboardUrl) { this.storyboardUrl = storyboardUrl; }
+    public String getScenePromptsUrl() { return scenePromptsUrl; }
+    public void setScenePromptsUrl(String scenePromptsUrl) { this.scenePromptsUrl = scenePromptsUrl; }
+    public String getImageSetUrl() { return imageSetUrl; }
+    public void setImageSetUrl(String imageSetUrl) { this.imageSetUrl = imageSetUrl; }
+    public String getNarrationUrl() { return narrationUrl; }
+    public void setNarrationUrl(String narrationUrl) { this.narrationUrl = narrationUrl; }
+    public String getSubtitleUrl() { return subtitleUrl; }
+    public void setSubtitleUrl(String subtitleUrl) { this.subtitleUrl = subtitleUrl; }
+    public String getProjectArchiveUrl() { return projectArchiveUrl; }
+    public void setProjectArchiveUrl(String projectArchiveUrl) { this.projectArchiveUrl = projectArchiveUrl; }
+    public String getAssetManifestUrl() { return assetManifestUrl; }
+    public void setAssetManifestUrl(String assetManifestUrl) { this.assetManifestUrl = assetManifestUrl; }
+    public String getWorkflowState() { return workflowState; }
+    public void setWorkflowState(String workflowState) { this.workflowState = workflowState; }
     public AppUser getOwner() { return owner; }
     public void setOwner(AppUser owner) { this.owner = owner; }
     public Long getOwnerId() { return owner == null ? null : owner.getId(); }

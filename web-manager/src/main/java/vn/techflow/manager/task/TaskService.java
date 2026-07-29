@@ -145,6 +145,15 @@ public class TaskService {
             task.setFactCheckStatus(metadata.factCheckStatus());
             task.setQualityScore(metadata.qualityScore());
             task.setAiProvider(metadata.aiProvider());
+            task.setScriptUrl(metadata.scriptUrl());
+            task.setStoryboardUrl(metadata.storyboardUrl());
+            task.setScenePromptsUrl(metadata.scenePromptsUrl());
+            task.setImageSetUrl(metadata.imageSetUrl());
+            task.setNarrationUrl(metadata.narrationUrl());
+            task.setSubtitleUrl(metadata.subtitleUrl());
+            task.setProjectArchiveUrl(metadata.projectArchiveUrl());
+            task.setAssetManifestUrl(metadata.assetManifestUrl());
+            task.setWorkflowState("COMPLETED");
             if (task.getCaption().isBlank()) {
                 task.setCaption(metadata.caption().isBlank() ? task.getTitle() : metadata.caption());
             }

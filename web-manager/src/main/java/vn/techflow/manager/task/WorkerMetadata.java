@@ -18,7 +18,15 @@ record WorkerMetadata(
         String sourceUrls,
         String factCheckStatus,
         Integer qualityScore,
-        String aiProvider
+        String aiProvider,
+        String scriptUrl,
+        String storyboardUrl,
+        String scenePromptsUrl,
+        String imageSetUrl,
+        String narrationUrl,
+        String subtitleUrl,
+        String projectArchiveUrl,
+        String assetManifestUrl
 ) {
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -28,7 +36,8 @@ record WorkerMetadata(
 
         String encodedMetadata = markerValue(output, "VIDEO_METADATA_B64=");
         if (encodedMetadata.isBlank()) {
-            return new WorkerMetadata(videoUrl, "", "", "{}", "{}", "", "NOT_CHECKED", null, "fallback");
+            return new WorkerMetadata(videoUrl, "", "", "{}", "{}", "", "NOT_CHECKED", null, "fallback",
+                    "", "", "", "", "", "", "", "");
         }
 
         try {
@@ -54,7 +63,15 @@ record WorkerMetadata(
                     limit(String.join("\n", sources), 20_000),
                     factCheck.path("approved").asBoolean(false) ? "VERIFIED" : "NEEDS_REVIEW",
                     quality.path("score").isInt() ? quality.path("score").asInt() : null,
-                    limit(storyboard.path("provider").asText("fallback"), 30)
+                    limit(storyboard.path("provider").asText("fallback"), 30),
+                    metadata.path("script_url").asText(""),
+                    metadata.path("storyboard_url").asText(""),
+                    metadata.path("scene_prompts_url").asText(""),
+                    metadata.path("image_set_url").asText(""),
+                    metadata.path("narration_url").asText(""),
+                    metadata.path("subtitle_url").asText(""),
+                    metadata.path("project_archive_url").asText(""),
+                    metadata.path("asset_manifest_url").asText("")
             );
         } catch (IllegalArgumentException exception) {
             throw new IOException("Worker trả về metadata Base64 không hợp lệ", exception);
