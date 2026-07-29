@@ -262,6 +262,151 @@ function TaskModal({ onClose, onCreated }) {
   </form></div>;
 }
 
+function VideosPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [pageData, setPageData] = useState(null);
+  const [page, setPage] = useState(0);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+  const [showCreate, setShowCreate] = useState(new URLSearchParams(location.search).get('new') === '1');
+  const load = useCallback(() => {
+    const params = new URLSearchParams({ page, size: 9, query });
+    if (status) params.set('status', status);
+    api(`/api/tasks?${params}`).then(setPageData).catch((r) => setError(r.message));
+  }, [page, query, status]);
+  useEffect(() => { load(); }, [load]);
+  const remove = async (task) => {
+    if (!window.confirm(`Xóa "${task.title}"?`)) return;
+    try { await api(`/api/tasks/${task.id}`, { method: 'DELETE' }); load(); }
+    catch (r) { setError(r.message); }
+  };
+  return <div className="page">
+    <section className="page-intro"><div><span>CONTENT LIBRARY</span><h2>Quản lý toàn bộ video.</h2><p>Tìm, lọc, mở studio chỉnh sửa và theo dõi trạng thái sản xuất.</p></div><button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo video</button></section>
+    {error && <div className="alert error">{error}</div>}
+    <section className="filter-bar"><div className="search-field"><Search /><input value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} placeholder="Tìm theo tiêu đề hoặc chủ đề..." /></div><div className="select-field"><ListFilter /><select value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }}><option value="">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([v, l]) => <option value={v} key={v}>{l}</option>)}</select></div></section>
+    {!pageData ? <Loader /> : pageData.content.length ? <><section className="video-grid">{pageData.content.map((task) => <article className="video-card" key={task.id}>
+      <Link className="video-poster" to={`/videos/${task.id}`}>{task.outputPath ? <video muted preload="metadata" src={task.outputPath} /> : <div className="poster-placeholder"><Sparkles /><b>{task.topic || 'AI TechFlow'}</b><span>DRAFT</span></div>}<span className={`status ${task.status}`}>{statusLabels[task.status]}</span></Link>
+      <div className="video-card-body"><div className="card-meta"><span>{task.campaignId ? `Tập ${task.episodeNumber}` : priorityLabels[task.priority]}</span><span>{task.targetDurationSeconds || 60}s • {task.aiProvider || 'AI'}</span></div><h3><Link to={`/videos/${task.id}`}>{task.title}</Link></h3><p>{task.description || 'Chưa có mô tả.'}</p><div className="card-actions"><Link to={`/videos/${task.id}`}><PencilLine /> Mở Studio</Link><button onClick={() => remove(task)}><Trash2 /></button></div></div>
+    </article>)}</section><Pagination page={pageData.number} totalPages={pageData.totalPages} onChange={setPage} /></> : <EmptyState title="Không tìm thấy video" description="Thử bộ lọc khác hoặc tạo nội dung mới." action={<button className="button dark" onClick={() => setShowCreate(true)}><Plus /> Tạo video</button>} />}
+    {showCreate && <TaskModal onClose={() => setShowCreate(false)} onCreated={(task) => { setShowCreate(false); navigate(`/videos/${task.id}`); }} />}
+  </div>;
+}
+
+function VideoStudioPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [task, setTask] = useState(null);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [tab, setTab] = useState('overview');
+  const [showYoutubePublish, setShowYoutubePublish] = useState(false);
+  const load = useCallback(() => api(`/api/tasks/${id}`).then(setTask).catch((r) => setError(r.message)), [id]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!task || task.status !== 'GENERATING') return; const t = setInterval(load, 8000); return () => clearInterval(t); }, [task, load]);
+  const storyboard = useMemo(() => safeJson(task?.storyboardJson, {}), [task]);
+  const research = useMemo(() => safeJson(task?.researchJson, {}), [task]);
+  const scenes = storyboard.scenes || [];
+  const characters = storyboard.characters || [];
+  const tabs = [
+    ['overview', 'Tổng quan'], ['script', 'Kịch bản'], ['cast', 'Nhân vật'], ['scenes', 'Cảnh quay'],
+    ['images', 'Hình ảnh'], ['voice', 'Giọng đọc'], ['subtitles', 'Phụ đề'],
+    ['preview', 'Xem trước'], ['quality', 'Chất lượng'], ['files', 'Tải về'],
+  ];
+  const remove = async () => {
+    if (!window.confirm(`Xóa "${task.title}"?`)) return;
+    try { await api(`/api/tasks/${id}`, { method: 'DELETE' }); navigate('/videos'); }
+    catch (r) { setError(r.message); }
+  };
+  const regenerate = async () => {
+    try { await api(`/api/tasks/${id}/generate`, { method: 'POST' }); setMessage('Đã bắt đầu tạo lại video.'); load(); }
+    catch (r) { setError(r.message); }
+  };
+  if (!task && !error) return <Loader />;
+  if (error && !task) return <div className="page"><div className="alert error">{error}</div><Link to="/videos"><ArrowLeft /> Quay lại</Link></div>;
+  return <div className="page">
+    <div className="studio-breadcrumb"><Link to="/videos"><ArrowLeft /> Thư viện</Link><span>/</span><span>{task.title}</span></div>
+    {error && <div className="alert error">{error}</div>}
+    {message && <div className="alert success">{message}</div>}
+    <div className="inky-studio-header"><div><small>VIDEO STUDIO • ID #{task.id}</small><h2>{task.title}</h2><span className={`status ${task.status}`}>{statusLabels[task.status]}</span></div><div className="header-actions">
+      <button className="button outline" onClick={regenerate}><RefreshCw /> Tạo lại</button>
+      {task.outputPath && <button className="button outline" onClick={() => setShowYoutubePublish(true)}><Upload /> YouTube</button>}
+      <button className="button outline" onClick={remove}><Trash2 /> Xóa</button>
+    </div></div>
+    <nav className="inky-tabs">{tabs.map(([key, label]) => <button key={key} className={`inky-tab-button${tab === key ? ' active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}</nav>
+    <div className="inky-tab-content">
+      {tab === 'overview' && <div className="tab-pane">
+        {task.status === 'GENERATING' && <Loader label="Gemini đang dựng video — tự động cập nhật mỗi 8 giây..." />}
+        {task.outputPath && <div className="widescreen-player"><video controls preload="metadata" src={task.outputPath} /></div>}
+        <div className="download-grid" style={{marginTop: 20}}>
+          <div className="download-tile"><Film /><div><b>Chủ đề</b><small>{task.topic || '—'}</small></div></div>
+          <div className="download-tile"><Clock3 /><div><b>Thời lượng</b><small>{task.targetDurationSeconds}s • {task.aspectRatio} • {task.renderQuality}</small></div></div>
+          <div className="download-tile"><UserRound /><div><b>Nhân vật</b><small>{task.characterDescription || 'AI tự chọn'}</small></div></div>
+          <div className="download-tile"><Sparkles /><div><b>Phong cách</b><small>{task.visualStyle || 'AI tự chọn'}</small></div></div>
+        </div>
+        {task.outputPath && <VideoFeedbackWidget task={task} />}
+      </div>}
+      {tab === 'script' && <div className="tab-pane">
+        <h3>Kịch bản ({scenes.length} cảnh)</h3>
+        {storyboard.hook && <div className="download-tile" style={{marginBottom: 16}}><Sparkles /><div><b>Hook</b><small>{storyboard.hook}</small></div></div>}
+        {scenes.length ? scenes.map((s, i) => <div key={i} className="scene-card-item"><header><b>Cảnh {s.scene_number || i + 1}</b><span>{s.title || ''}</span></header><p>{s.narration || s.text || '—'}</p></div>) : <EmptyState title="Chưa có kịch bản" description="Bấm Tạo lại để Gemini viết kịch bản." />}
+      </div>}
+      {tab === 'cast' && <div className="tab-pane">
+        <h3>Nhân vật ({characters.length})</h3>
+        {characters.length ? <div className="cast-grid">{characters.map((c, i) => <div key={i} className="character-card"><span className="char-badge">{c.role || 'MAIN'}</span><h4>{c.name || `Nhân vật ${i + 1}`}</h4><p>{c.description || '—'}</p></div>)}</div> : <EmptyState icon={UserRound} title="Không có nhân vật" description="AI sẽ tự tạo nhân vật khi dựng video." />}
+      </div>}
+      {tab === 'scenes' && <div className="tab-pane">
+        <h3>Cảnh quay ({scenes.length})</h3>
+        <div className="scene-cards-list">{scenes.map((s, i) => <div key={i} className="scene-card-item">
+          <header><b>Cảnh {s.scene_number || i + 1}</b><span>{s.title || ''}</span>{s.duration_hint && <small>{s.duration_hint}s</small>}</header>
+          <p><b>Narration:</b> {s.narration || s.text || '—'}</p>
+          {s.environment && <p><b>Bối cảnh:</b> {s.environment}</p>}
+          {s.characters?.length > 0 && <p><b>Nhân vật:</b> {s.characters.map((c) => c.character_id || c.name).join(', ')}</p>}
+        </div>)}</div>
+      </div>}
+      {tab === 'images' && <div className="tab-pane">
+        <h3>Hình ảnh minh hoạ</h3>
+        {task.imageSetUrl ? <a href={task.imageSetUrl} target="_blank" rel="noreferrer" className="button dark"><Image /> Mở bộ ảnh trên Cloudinary</a> : <EmptyState icon={Image} title="Chưa có hình ảnh" description="Hình ảnh sẽ được tạo khi Gemini dựng video." />}
+      </div>}
+      {tab === 'voice' && <div className="tab-pane">
+        <h3>Giọng đọc</h3>
+        {task.narrationUrl ? <><audio controls src={task.narrationUrl} style={{width: '100%', marginTop: 12}} /><a href={task.narrationUrl} target="_blank" rel="noreferrer" className="button outline" style={{marginTop: 12}}>Tải file WAV</a></> : <EmptyState title="Chưa có giọng đọc" description="Audio sẽ được tạo khi dựng video." />}
+      </div>}
+      {tab === 'subtitles' && <div className="tab-pane">
+        <h3>Phụ đề</h3>
+        {task.subtitleUrl ? <a href={task.subtitleUrl} target="_blank" rel="noreferrer" className="button dark">Tải phụ đề SRT</a> : <EmptyState title="Chưa có phụ đề" description="Phụ đề sẽ được tạo khi dựng video." />}
+      </div>}
+      {tab === 'preview' && <div className="tab-pane">
+        <h3>Xem trước video</h3>
+        {task.outputPath ? <div className="widescreen-player"><video controls preload="metadata" src={task.outputPath} /></div> : <EmptyState icon={CirclePlay} title="Chưa có video" description="Video sẽ hiện ở đây sau khi dựng xong." />}
+      </div>}
+      {tab === 'quality' && <div className="tab-pane">
+        <h3>Báo cáo chất lượng</h3>
+        <div className="quality-card-expanded">
+          {task.qualityScore != null && <span className="score-badge">Điểm: {task.qualityScore}/100</span>}
+          <p><b>Fact-check:</b> {task.factCheckStatus}</p>
+          {research.summary && <p><b>Tóm tắt nghiên cứu:</b> {research.summary}</p>}
+          {task.sourceUrls && <p><b>Nguồn:</b> {task.sourceUrls}</p>}
+        </div>
+      </div>}
+      {tab === 'files' && <div className="tab-pane">
+        <h3>Tải về tài nguyên</h3>
+        <div className="download-grid">
+          {task.outputPath && <a href={task.outputPath} target="_blank" rel="noreferrer" className="download-tile"><Film /><div><b>Final Video (MP4)</b><small>Video đã render xong</small></div></a>}
+          {task.projectArchiveUrl && <a href={task.projectArchiveUrl} target="_blank" rel="noreferrer" className="download-tile"><Layers3 /><div><b>Project ZIP</b><small>Toàn bộ tài nguyên dự án</small></div></a>}
+          {task.scriptUrl && <a href={task.scriptUrl} target="_blank" rel="noreferrer" className="download-tile"><PencilLine /><div><b>Kịch bản (MD)</b><small>Approved script</small></div></a>}
+          {task.narrationUrl && <a href={task.narrationUrl} target="_blank" rel="noreferrer" className="download-tile"><CirclePlay /><div><b>Narration (WAV)</b><small>File giọng đọc</small></div></a>}
+          {task.subtitleUrl && <a href={task.subtitleUrl} target="_blank" rel="noreferrer" className="download-tile"><Copy /><div><b>Phụ đề (SRT)</b><small>Subtitles</small></div></a>}
+          {task.assetManifestUrl && <a href={task.assetManifestUrl} target="_blank" rel="noreferrer" className="download-tile"><Settings2 /><div><b>Render Manifest</b><small>JSON metadata</small></div></a>}
+          {!task.outputPath && !task.projectArchiveUrl && !task.scriptUrl && <EmptyState title="Chưa có file để tải" description="Tài nguyên sẽ xuất hiện sau khi Gemini dựng xong video." />}
+        </div>
+      </div>}
+    </div>
+    {showYoutubePublish && task && <YouTubePublishModal task={task} onClose={() => setShowYoutubePublish(false)} onPublished={(result) => { setShowYoutubePublish(false); setMessage(`${result.message}. Video ID: ${result.videoId}`); }} />}
+  </div>;
+}
+
 export function TikTokPublishModal({ task, onClose, onPublished }) {
   const [creator, setCreator] = useState(null);
   const [form, setForm] = useState({
