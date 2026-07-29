@@ -8,11 +8,13 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import vn.techflow.manager.youtube.YouTubeConfiguration;
 
 @EnableAsync
 @EnableScheduling
 @SpringBootApplication
+@EnableSpringDataWebSupport(pageSerializationMode = EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO)
 @EnableConfigurationProperties(YouTubeConfiguration.class)
 public class TechFlowManagerApplication {
     public static void main(String[] args) {
