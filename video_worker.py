@@ -478,15 +478,11 @@ def generate_character_image(
 ) -> str | None:
     """Generate a character reference sheet image and upload to Cloudinary.
     Returns the Cloudinary URL or None on failure."""
-    key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not key:
-        LOGGER.warning("No OPENAI_API_KEY; cannot generate character image")
-        return None
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=key)
-    except ImportError:
-        LOGGER.warning("OpenAI SDK not available")
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    
+    if not openai_key and not gemini_key:
+        LOGGER.warning("No OPENAI_API_KEY or GEMINI_API_KEY; cannot generate character image")
         return None
 
     prompt = (
@@ -503,16 +499,40 @@ def generate_character_image(
         tmp_dir = OUTPUT_DIR / "_character_refs"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         ref_file = tmp_dir / f"char_{slugify(character_description)}.png"
-        result = client.images.generate(
-            model=IMAGE_MODEL,
-            prompt=prompt,
-            size="1536x1024",
-            quality=IMAGE_QUALITY,
-        )
-        if _save_generated_image(result, ref_file):
-            url = upload_character_image(ref_file, slugify(character_description))
-            ref_file.unlink(missing_ok=True)
-            return url
+        
+        url = None
+        if gemini_key:
+            from google import genai
+            from google.genai import types
+            gemini_client = genai.Client(api_key=gemini_key)
+            result = gemini_client.models.generate_images(
+                model=os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    output_mime_type="image/png",
+                    aspect_ratio="16:9"
+                )
+            )
+            for img in result.generated_images:
+                ref_file.write_bytes(img.image.image_bytes)
+                url = upload_character_image(ref_file, slugify(character_description))
+                ref_file.unlink(missing_ok=True)
+                break
+        elif openai_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key)
+            result = client.images.generate(
+                model=IMAGE_MODEL,
+                prompt=prompt,
+                size="1536x1024",
+                quality=IMAGE_QUALITY,
+            )
+            if _save_generated_image(result, ref_file):
+                url = upload_character_image(ref_file, slugify(character_description))
+                ref_file.unlink(missing_ok=True)
+                
+        return url
     except Exception as exc:
         LOGGER.warning("Character image generation failed: %s", exc)
     return None
