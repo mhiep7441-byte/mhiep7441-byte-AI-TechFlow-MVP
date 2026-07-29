@@ -88,11 +88,11 @@ def slugify(value: str) -> str:
 def get_render_resolution(aspect_ratio: str, render_quality: str) -> tuple[int, int]:
     is_16_9 = aspect_ratio == "16:9"
     if render_quality == "draft":
-        return (1280, 720) if is_16_9 else (720, 1280)
+        return (854, 480) if is_16_9 else (480, 854)
     elif render_quality == "2k":
-        return (2560, 1440) if is_16_9 else (1440, 2560)
-    else: # hd default
         return (1920, 1080) if is_16_9 else (1080, 1920)
+    else: # hd default / low-ram optimized for 512MB free tier
+        return (1280, 720) if is_16_9 else (720, 1280)
 
 def media_duration_ms(path: Path) -> int:
     try:
@@ -123,7 +123,7 @@ def generate_scene_audio(narration: str, output: Path, voice: str = "vi-VN-HoaiM
     # Fallback: create silent audio track of 6 seconds
     subprocess.run(
         [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1",
             "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
             "-t", "6", "-c:a", "libmp3lame", "-b:a", "128k", str(output)
         ],
@@ -303,7 +303,7 @@ def render_episode_video(plan: InkyPlan, width: int, height: int, project_dir: P
         )
 
         cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1",
             "-loop", "1", "-i", str(img_path),
             "-i", str(audio_path),
             "-vf", vf_filter,
@@ -325,7 +325,7 @@ def render_episode_video(plan: InkyPlan, width: int, height: int, project_dir: P
     full_audio = project_dir / "audio" / "narration-full.wav"
     
     final_cmd = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1",
         "-f", "concat", "-safe", "0", "-i", str(concat_list),
         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart",
@@ -341,7 +341,7 @@ def render_episode_video(plan: InkyPlan, width: int, height: int, project_dir: P
                 ap = project_dir / "audio" / f"scene-{s.scene_number:03d}.wav"
                 f.write(f"file '{ap.resolve().as_posix()}'\n")
         subprocess.run(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(audio_concat_list), "-c", "copy", str(full_audio)],
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-threads", "1", "-f", "concat", "-safe", "0", "-i", str(audio_concat_list), "-c", "copy", str(full_audio)],
             check=True
         )
 
