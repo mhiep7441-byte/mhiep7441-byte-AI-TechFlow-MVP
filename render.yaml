@@ -109,6 +109,29 @@ services:
       - key: SESSION_COOKIE_SECURE
         value: "true"
 
+  - type: worker
+    name: ai-techflow-worker
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m worker-python.app.worker"
+    envVars:
+      - key: DATABASE_URL_RAW
+        fromDatabase:
+          name: techflow-db
+          property: connectionString
+      - key: PYTHONPATH
+        value: "."
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CLOUDINARY_URL
+        sync: false
+      - key: OUTPUT_DIR
+        value: /tmp/techflow-outputs
+
 databases:
   - name: techflow-db
     plan: free

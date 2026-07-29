@@ -484,16 +484,31 @@ Yêu cầu trả về JSON chuẩn:
 
     # Create plan from LLM or fallback
     raw_plan_dict = None
-    if os.getenv("OPENAI_API_KEY", "").strip():
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+    if gemini_key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=gemini_key)
+            resp = client.models.generate_content(
+                model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+                contents=script_prompt,
+            )
+            raw_plan_dict = json.loads(re.search(r"\{.*\}", resp.text, re.DOTALL).group(0))
+        except Exception as exc:
+            LOGGER.warning("Gemini script generation failed (%s); using fallback.", exc)
+    elif openai_key:
         try:
             from openai import OpenAI
-            resp = OpenAI(api_key=os.environ["OPENAI_API_KEY"].strip()).responses.create(
-                model=os.getenv("OPENAI_SCRIPT_MODEL", "gpt-5.6-terra"),
-                input=script_prompt
+            client = OpenAI(api_key=openai_key)
+            resp = client.chat.completions.create(
+                model=os.getenv("OPENAI_SCRIPT_MODEL", "gpt-4o-mini"),
+                messages=[{"role": "user", "content": script_prompt}],
             )
-            raw_plan_dict = json.loads(re.search(r"\{.*\}", resp.output_text, re.DOTALL).group(0))
+            raw_plan_dict = json.loads(re.search(r"\{.*\}", resp.choices[0].message.content, re.DOTALL).group(0))
         except Exception as exc:
-            LOGGER.warning("LLM script generation failed (%s); using structured multi-character fallback.", exc)
+            LOGGER.warning("OpenAI script generation failed (%s); using fallback.", exc)
 
     if not raw_plan_dict:
         raw_plan_dict = {

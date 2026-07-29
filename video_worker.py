@@ -478,15 +478,11 @@ def generate_character_image(
 ) -> str | None:
     """Generate a character reference sheet image and upload to Cloudinary.
     Returns the Cloudinary URL or None on failure."""
-    key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not key:
-        LOGGER.warning("No OPENAI_API_KEY; cannot generate character image")
-        return None
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=key)
-    except ImportError:
-        LOGGER.warning("OpenAI SDK not available")
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    
+    if not openai_key and not gemini_key:
+        LOGGER.warning("No OPENAI_API_KEY or GEMINI_API_KEY; cannot generate character image")
         return None
 
     prompt = (
@@ -503,16 +499,40 @@ def generate_character_image(
         tmp_dir = OUTPUT_DIR / "_character_refs"
         tmp_dir.mkdir(parents=True, exist_ok=True)
         ref_file = tmp_dir / f"char_{slugify(character_description)}.png"
-        result = client.images.generate(
-            model=IMAGE_MODEL,
-            prompt=prompt,
-            size="1536x1024",
-            quality=IMAGE_QUALITY,
-        )
-        if _save_generated_image(result, ref_file):
-            url = upload_character_image(ref_file, slugify(character_description))
-            ref_file.unlink(missing_ok=True)
-            return url
+        
+        url = None
+        if gemini_key:
+            from google import genai
+            from google.genai import types
+            gemini_client = genai.Client(api_key=gemini_key)
+            result = gemini_client.models.generate_images(
+                model=os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    output_mime_type="image/png",
+                    aspect_ratio="16:9"
+                )
+            )
+            for img in result.generated_images:
+                ref_file.write_bytes(img.image.image_bytes)
+                url = upload_character_image(ref_file, slugify(character_description))
+                ref_file.unlink(missing_ok=True)
+                break
+        elif openai_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key)
+            result = client.images.generate(
+                model=IMAGE_MODEL,
+                prompt=prompt,
+                size="1536x1024",
+                quality=IMAGE_QUALITY,
+            )
+            if _save_generated_image(result, ref_file):
+                url = upload_character_image(ref_file, slugify(character_description))
+                ref_file.unlink(missing_ok=True)
+                
+        return url
     except Exception as exc:
         LOGGER.warning("Character image generation failed: %s", exc)
     return None
@@ -929,6 +949,52 @@ def quality_control(plan: VideoPlan, research: ResearchBrief, fact_check: FactCh
     }
 
 
+def run_script_only(
+    topic: str,
+    target_duration_seconds: int = DEFAULT_TARGET_DURATION_SECONDS,
+    visual_style: str = "",
+    character_description: str = "",
+    character_image_url: str = "",
+    audio_mode: str = "",
+    video_provider: str = "",
+    aspect_ratio: str = "",
+    render_quality: str = "",
+) -> dict[str, Any]:
+    research = research_topic(topic)
+    requested_audio_mode = (audio_mode or os.getenv("VIDEO_AUDIO_MODE", "narrated")).strip()
+    requested_aspect_ratio = (aspect_ratio or os.getenv("VIDEO_ASPECT_RATIO", "9:16")).strip()
+    plan = generate_plan(
+        topic,
+        research,
+        target_duration_seconds,
+        visual_style,
+        character_description,
+        requested_audio_mode,
+        requested_aspect_ratio,
+    )
+    plan.character_image_url = character_image_url
+    requested_video_provider = (video_provider or os.getenv("VIDEO_PROVIDER", "kenburns")).strip()
+    requested_render_quality = (render_quality or os.getenv("VIDEO_RENDER_QUALITY", "draft")).strip()
+    plan.audio_mode = requested_audio_mode if requested_audio_mode in {"narrated", "silent_animation"} else "narrated"
+    plan.video_provider = requested_video_provider if requested_video_provider in {"seedance2_fast", "veo", "kenburns"} else "kenburns"
+    plan.aspect_ratio = requested_aspect_ratio if requested_aspect_ratio in {"9:16", "16:9"} else "9:16"
+    plan.render_quality = requested_render_quality if requested_render_quality in {"draft", "hd", "2k"} else "draft"
+    if plan.audio_mode == "silent_animation":
+        for scene in plan.scenes:
+            scene.narration = ""
+            
+    fact_check = fact_check_plan(plan, research)
+    
+    return {
+        "caption": plan.caption,
+        "hashtags": plan.hashtags,
+        "research": research.to_dict(),
+        "storyboard": asdict(plan),
+        "fact_check": asdict(fact_check),
+        "status": "DRAFT_REQUIRES_REVIEW",
+    }
+
+
 def upload_video(video: Path, job_id: str) -> str:
     if not os.getenv("CLOUDINARY_URL", "").strip():
         LOGGER.warning("Chưa cấu hình CLOUDINARY_URL; trả về file URL cục bộ.")
@@ -1026,6 +1092,7 @@ if __name__ == "__main__":
     parser.add_argument("--character", default="", help="Mô tả nhân vật/host nhất quán")
     parser.add_argument("--character-image", default="", help="URL ảnh reference nhân vật để giữ nhất quán")
     parser.add_argument("--generate-character", action="store_true", help="Chỉ tạo ảnh character reference rồi thoát")
+    parser.add_argument("--generate-script", action="store_true", help="Chỉ tạo kịch bản và storyboard rồi thoát")
     parser.add_argument("--audio-mode", choices=["narrated", "silent_animation"], default=os.getenv("VIDEO_AUDIO_MODE", "narrated"))
     parser.add_argument("--video-provider", choices=["seedance2_fast", "veo", "kenburns"], default=os.getenv("VIDEO_PROVIDER", "kenburns"))
     parser.add_argument("--aspect-ratio", choices=["9:16", "16:9"], default=os.getenv("VIDEO_ASPECT_RATIO", "9:16"))
@@ -1040,6 +1107,24 @@ if __name__ == "__main__":
             else:
                 print("CHARACTER_IMAGE_FAILED", flush=True)
                 sys.exit(1)
+                
+        if args.generate_script:
+            result = run_script_only(
+                args.topic,
+                args.duration,
+                args.visual_style,
+                args.character,
+                args.character_image,
+                args.audio_mode,
+                args.video_provider,
+                args.aspect_ratio,
+                args.render_quality,
+            )
+            # Output in the same format expected by worker
+            print("===WORKER_OUTPUT===")
+            print(json.dumps(result, ensure_ascii=False))
+            sys.exit(0)
+            
         result = run(
             args.topic,
             args.duration,
